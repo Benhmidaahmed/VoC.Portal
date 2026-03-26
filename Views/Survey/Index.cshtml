@@ -1,0 +1,78 @@
+@{
+    ViewData["Title"] = "Survey";
+    // Lecture des paramètres depuis la query string (appel : /Survey/Index?id={surveyId}&participantId={participantId}&campagneId={campagneId})
+    var surveyId = Context.Request.Query["id"].ToString();
+    var participantId = Context.Request.Query["participantId"].ToString();
+    var campagneId = Context.Request.Query["campagneId"].ToString();
+}
+
+@section Styles {
+    <link href="https://unpkg.com/survey-core/defaultV2.min.css" rel="stylesheet" />
+}
+
+<div class="container">
+    <h2>Questionnaire</h2>
+    <div id="surveyContainer">Chargement du questionnaire…</div>
+    <div id="resultContainer" style="margin-top:16px;"></div>
+</div>
+
+@section Scripts {
+    <script src="https://unpkg.com/survey-jquery/survey.jquery.min.js"></script>
+
+    <script>
+        (function () {
+            const surveyId = '@surveyId';
+            const participantId = '@participantId';
+            const campagneId = '@campagneId';
+
+            if (!surveyId) {
+                document.getElementById('surveyContainer').innerText = "ID du questionnaire manquant dans l'URL (?id=...).";
+                return;
+            }
+
+            fetch(`/api/surveys/${encodeURIComponent(surveyId)}`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Impossible de charger le questionnaire.');
+                    return response.json();
+                })
+                .then(json => {
+                    // Crée et rend le survey
+                    const survey = new Survey.Model(json);
+
+                    survey.onComplete.add(function (sender) {
+                        const answers = sender.data;
+                        const payload = {
+                            surveyId: surveyId,
+                            participantId: participantId || null,
+                            campagneId: campagneId || null,
+                            responseJson: JSON.stringify(answers)
+                        };
+
+                        fetch('/api/responses', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        })
+                            .then(r => r.json().then(b => ({ ok: r.ok, body: b })))
+                            .then(result => {
+                                if (result.ok) {
+                                    document.getElementById('surveyContainer').innerHTML = "<h4>Merci, vos réponses ont été enregistrées.</h4>";
+                                    document.getElementById('resultContainer').innerHTML = "<pre>ID: " + result.body.id + "</pre>";
+                                } else {
+                                    document.getElementById('resultContainer').innerHTML = "<pre>Erreur: " + JSON.stringify(result.body) + "</pre>";
+                                }
+                            })
+                            .catch(err => {
+                                document.getElementById('resultContainer').innerHTML = "<pre>Erreur réseau: " + err + "</pre>";
+                            });
+                    });
+
+                    survey.render('surveyContainer');
+                })
+                .catch(err => {
+                    document.getElementById('surveyContainer').innerText = "Erreur lors du chargement du questionnaire.";
+                    console.error(err);
+                });
+        })();
+    </script>
+}
