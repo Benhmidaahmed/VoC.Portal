@@ -1,183 +1,71 @@
 @{
-
     ViewData["Title"] = "Questionnaire";
-
+    var surveyId = Context.Request.Query["id"].ToString();
 }
 
-
-
-<!DOCTYPE html>
-
-<html>
-
-<head>
-
-    <meta charset="utf-8" />
-
-    <title>@ViewData["Title"]</title>
-
-
-
-    <!-- SurveyJS CSS -->
-
+@section Styles {
+    @* Chargement des styles SurveyJS moderne (V2) *@
     <link href="https://unpkg.com/survey-core/defaultV2.min.css" rel="stylesheet" />
-
-
-
     <style>
-
         #surveyContainer {
-            margin: 24px;
+            margin-top: 20px;
+            min-height: 500px;
         }
-
     </style>
+}
 
-</head>
+<div class="container">
+    <h2>@ViewData["Title"]</h2>
+    <div id="surveyContainer">Chargement du questionnaire...</div>
+    <div id="resultContainer"></div>
+</div>
 
-<body>
-
-    <div class="container">
-
-        <h2>@ViewData["Title"]</h2>
-
-        <div id="surveyContainer">Chargement du questionnaire…</div>
-
-        <div id="resultContainer" style="margin-top:16px;"></div>
-
-    </div>
-
-
-
-    <!-- jQuery + SurveyJS (survey-jquery dépend de jQuery) -->
-
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-
+@section Scripts {
+    @* On utilise la version jQuery de SurveyJS *@
     <script src="https://unpkg.com/survey-jquery/survey.jquery.min.js"></script>
 
-
-
     <script>
-
         (function () {
+            // 1. Appliquer le thème visuel
+            Survey.StylesManager.applyTheme("defaultV2");
 
-            function getQueryParam(name) {
-
-                const url = new URL(window.location.href);
-
-                return url.searchParams.get(name);
-
-            }
-
-
-
-            const surveyId = getQueryParam('id');
-
-            const participantId = getQueryParam('participantId');
-
-            const campagneId = getQueryParam('campagneId');
-
-
-
+            const surveyId = "@surveyId";
             if (!surveyId) {
-
-                document.getElementById('surveyContainer').innerText = "ID du questionnaire manquant (paramètre ?id=).";
-
+                $("#surveyContainer").html("<div class='alert alert-danger'>ID manquant.</div>");
                 return;
-
             }
 
-
-
-            // Charger le JSON depuis votre API existante
-
+            // 2. Récupérer le JSON du questionnaire
             fetch(`/api/surveys/${encodeURIComponent(surveyId)}`)
-
-                .then(r => {
-
-                    if (!r.ok) throw new Error('Impossible de charger le questionnaire.');
-
-                    return r.json();
-
-                })
-
+                .then(r => r.json())
                 .then(json => {
-
                     const survey = new Survey.Model(json);
 
-
-
+                    // 3. Gérer la fin du questionnaire
                     survey.onComplete.add(function (sender) {
-
-                        const answers = sender.data;
-
                         const payload = {
-
                             SurveyId: surveyId,
-
-                            ParticipantId: participantId || null,
-
-                            CampagneId: campagneId || null,
-
-                            ResponseJson: JSON.stringify(answers)
-
+                            ResponseJson: JSON.stringify(sender.data)
                         };
 
-
-
                         fetch('/api/responses', {
-
                             method: 'POST',
-
                             headers: { 'Content-Type': 'application/json' },
-
                             body: JSON.stringify(payload)
-
-                        })
-
-                            .then(async r => {
-
-                                const body = await r.json().catch(() => ({}));
-
-                                if (r.ok) {
-
-                                    document.getElementById('surveyContainer').innerHTML = "<h4>Merci — vos réponses ont été enregistrées.</h4>";
-
-                                    document.getElementById('resultContainer').innerHTML = "<pre>ID: " + (body.id ?? "") + "</pre>";
-
-                                } else {
-
-                                    document.getElementById('resultContainer').innerHTML = "<pre>Erreur: " + JSON.stringify(body) + "</pre>";
-
-                                }
-
-                            })
-
-                            .catch(err => {
-
-                                document.getElementById('resultContainer').innerHTML = "<pre>Erreur réseau lors de l'envoi: " + err + "</pre>";
-
-                            });
-
+                        }).then(res => {
+                            if(res.ok) {
+                                $("#surveyContainer").html("<h3>Merci pour votre participation !</h3>");
+                            }
+                        });
                     });
 
-
-
-                    survey.render('surveyContainer');
-
+                    // 4. Afficher le questionnaire dans la div
+                    $("#surveyContainer").Survey({ model: survey });
                 })
-
                 .catch(err => {
-
                     console.error(err);
-
-                    document.getElementById('surveyContainer').innerText = "Erreur lors du chargement du questionnaire.";
-
+                    $("#surveyContainer").text("Erreur lors du chargement.");
                 });
-
         })();
-
     </script>
-
-</body>
-
-</html>
+}

@@ -38,15 +38,13 @@ namespace Xrmbox.VoC.Portal.Services
 
         /// <summary>
         /// Récupère le JSON du questionnaire.
-        /// entityName = "xrmbox_questionnairedesatisfaction"
-        /// attribute = "xrmbox_Json" (exact case depuis Power Apps)
         /// </summary>
         public string? GetSurvey(Guid id)
         {
             if (id == Guid.Empty) throw new ArgumentException("id invalide", nameof(id));
 
             const string entityName = "xrmbox_questionnairedesatisfaction";
-            const string targetAttribute = "xrmbox_json"; // EXACT case from Power Apps
+            const string targetAttribute = "xrmbox_json";
 
             var columns = new ColumnSet(targetAttribute);
 
@@ -55,24 +53,15 @@ namespace Xrmbox.VoC.Portal.Services
                 var entity = _client.Retrieve(entityName, id, columns);
                 if (entity == null) return null;
 
-                // Recherche par nom exact (case?sensitive)
                 if (entity.Attributes.TryGetValue(targetAttribute, out var value) && value != null)
                 {
                     return value.ToString();
                 }
 
-                // Si non trouvé : log des attributs retournés pour debug
-                Console.WriteLine($"[Dataverse] Attribut '{targetAttribute}' non trouvé pour '{entityName}' (id={id}). Attributs retournés :");
-                foreach (var kv in entity.Attributes)
-                {
-                    Console.WriteLine($"  - {kv.Key} ({kv.Value?.GetType().Name ?? "null"})");
-                }
-
-                // Tentative de récupération insensible à la casse (diagnostic)
+                // Diagnostic si non trouvé
                 var match = entity.Attributes.FirstOrDefault(a => string.Equals(a.Key, targetAttribute, StringComparison.OrdinalIgnoreCase));
                 if (!match.Equals(default(KeyValuePair<string, object>)) && match.Value != null)
                 {
-                    Console.WriteLine($"[Dataverse] Attribut trouvé en ignore-case : '{match.Key}'");
                     return match.Value.ToString();
                 }
 
@@ -86,8 +75,7 @@ namespace Xrmbox.VoC.Portal.Services
         }
 
         /// <summary>
-              /// Retourne la liste des noms logiques d'attributs pour une entité.
-        /// Utilisez ceci pour vérifier la casse exacte et l'existence du champ.
+        /// Retourne la liste des noms logiques d'attributs pour une entité.
         /// </summary>
         public IEnumerable<string> GetEntityAttributes(string entityLogicalName)
         {
@@ -116,7 +104,7 @@ namespace Xrmbox.VoC.Portal.Services
         }
 
         /// <summary>
-        /// Info de connexion / debug : userId + org name
+        /// Info de connexion / debug
         /// </summary>
         public object GetConnectionInfo()
         {
@@ -137,33 +125,53 @@ namespace Xrmbox.VoC.Portal.Services
             }
         }
 
+        /// <summary>
+        /// Enregistre la réponse. 
+        /// Modifié pour accepter les soumissions sans ParticipantId ou CampagneId.
+        /// </summary>
         public Guid SubmitResponse(Models.SubmitResponseRequest req)
         {
             if (req == null) throw new ArgumentNullException(nameof(req));
-            if (req.SurveyId == Guid.Empty) throw new ArgumentException("SurveyId requis", nameof(req.SurveyId));
-            if (req.ParticipantId == Guid.Empty) throw new ArgumentException("ParticipantId requis", nameof(req.ParticipantId));
-            if (req.CampagneId == Guid.Empty) throw new ArgumentException("CampagneId requis", nameof(req.CampagneId));
-            if (string.IsNullOrWhiteSpace(req.ResponseJson)) throw new ArgumentException("ResponseJson requis", nameof(req.ResponseJson));
+
+            // Seuls SurveyId et ResponseJson sont obligatoires
+            if (req.SurveyId == Guid.Empty) throw new ArgumentException("SurveyId requis");
+            if (string.IsNullOrWhiteSpace(req.ResponseJson)) throw new ArgumentException("ResponseJson requis");
 
             const string entityName = "xrmbox_reponsedesatisfaction";
-
             var entity = new Entity(entityName);
 
-            // Stockage du JSON (champ choisi : xrmbox_name)
-            entity["xrmbox_name"] = req.ResponseJson;
+            // On stocke le JSON dans le nom ou un champ dédié
+            entity["xrmbox_name"] = "Réponse Portail - " + DateTime.Now.ToString("g");
 
-            // Lookups : attributs avec préfixe xrmbox_
+            // Lien vers le questionnaire (Obligatoire)
             entity["xrmbox_questionnairedesatisfaction"] = new EntityReference("xrmbox_questionnairedesatisfaction", req.SurveyId);
-            entity["xrmbox_campagnedesatisfaction"] = new EntityReference("xrmbox_campagnedesatisfaction", req.CampagneId);
-            entity["xrmbox_participant"] = new EntityReference("xrmbox_participant", req.ParticipantId);
+
+            // --- GESTION DES IDS OPTIONNELS (POUR LES NON-CONNECTÉS / ANONYMES) ---
+
+            // Si CampagneId est fourni dans l'URL et valide
+            if (req.CampagneId.HasValue && req.CampagneId.Value != Guid.Empty)
+            {
+                entity["xrmbox_campagnedesatisfaction"] = new EntityReference("xrmbox_campagnedesatisfaction", req.CampagneId.Value);
+            }
+
+            // Si ParticipantId est fourni dans l'URL et valide
+            if (req.ParticipantId.HasValue && req.ParticipantId.Value != Guid.Empty)
+            {
+                // Vérifier si la table cible est 'xrmbox_participant' ou 'contact' selon ton environnement
+                entity["xrmbox_participant"] = new EntityReference("xrmbox_participantalacampagne", req.ParticipantId.Value);
+            }
+
+            // Optionnel : stocker le JSON dans un champ spécifique si tu en as un
+            // entity["xrmbox_rawjson"] = req.ResponseJson;
 
             try
             {
                 var createdId = _client.Create(entity);
                 return createdId;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Console.WriteLine($"[Dataverse Error] SubmitResponse failed: {ex.Message}");
                 throw;
             }
         }

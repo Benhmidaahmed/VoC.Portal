@@ -1,77 +1,73 @@
 @{
     ViewData["Title"] = "Survey";
-    // Lecture des paramètres depuis la query string (appel : /Survey/Index?id={surveyId}&participantId={participantId}&campagneId={campagneId})
     var surveyId = Context.Request.Query["id"].ToString();
     var participantId = Context.Request.Query["participantId"].ToString();
     var campagneId = Context.Request.Query["campagneId"].ToString();
 }
 
 @section Styles {
-    <link href="https://unpkg.com/survey-core/defaultV2.min.css" rel="stylesheet" />
+    @* CSS de SurveyJS *@
+    <link href="https://cdn.jsdelivr.net/npm/survey-core/survey.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/survey-core/defaultV2.min.css" rel="stylesheet" />
 }
 
 <div class="container">
-    <h2>Questionnaire</h2>
-    <div id="surveyContainer">Chargement du questionnaire…</div>
+    <div class="py-4">
+        <div id="surveyContainer">Chargement du questionnaire…</div>
+    </div>
     <div id="resultContainer" style="margin-top:16px;"></div>
 </div>
 
 @section Scripts {
-    <script src="https://unpkg.com/survey-jquery/survey.jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/survey-jquery/survey.jquery.min.js"></script>
 
     <script>
         (function () {
+            // Appliquer le thème AVANT tout
+            Survey.StylesManager.applyTheme("defaultV2");
+
             const surveyId = '@surveyId';
             const participantId = '@participantId';
             const campagneId = '@campagneId';
 
             if (!surveyId) {
-                document.getElementById('surveyContainer').innerText = "ID du questionnaire manquant dans l'URL (?id=...).";
+                document.getElementById('surveyContainer').innerText = "ID du questionnaire manquant.";
                 return;
             }
 
             fetch(`/api/surveys/${encodeURIComponent(surveyId)}`)
                 .then(response => {
-                    if (!response.ok) throw new Error('Impossible de charger le questionnaire.');
+                    if (!response.ok) throw new Error('Erreur API');
                     return response.json();
                 })
                 .then(json => {
-                    // Crée et rend le survey
                     const survey = new Survey.Model(json);
 
-                    survey.onComplete.add(function (sender) {
-                        const answers = sender.data;
+                         survey.onComplete.add(function (sender) {
                         const payload = {
-                            surveyId: surveyId,
-                            participantId: participantId || null,
-                            campagneId: campagneId || null,
-                            responseJson: JSON.stringify(answers)
-                        };
+                            // On utilise des MAJUSCULES pour correspondre au modèle C#
+                            SurveyId: surveyId,
+                            ParticipantId: participantId || null,
+                            CampagneId: campagneId || null,
+                            ResponseJson: JSON.stringify(sender.data)
+                        };  
 
                         fetch('/api/responses', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(payload)
-                        })
-                            .then(r => r.json().then(b => ({ ok: r.ok, body: b })))
-                            .then(result => {
-                                if (result.ok) {
-                                    document.getElementById('surveyContainer').innerHTML = "<h4>Merci, vos réponses ont été enregistrées.</h4>";
-                                    document.getElementById('resultContainer').innerHTML = "<pre>ID: " + result.body.id + "</pre>";
-                                } else {
-                                    document.getElementById('resultContainer').innerHTML = "<pre>Erreur: " + JSON.stringify(result.body) + "</pre>";
-                                }
-                            })
-                            .catch(err => {
-                                document.getElementById('resultContainer').innerHTML = "<pre>Erreur réseau: " + err + "</pre>";
-                            });
+                        }).then(r => {
+                            if (r.ok) {
+                                document.getElementById('surveyContainer').innerHTML = "<h4>Merci !</h4>";
+                            }
+                        });
                     });
 
-                    survey.render('surveyContainer');
+                    $("#surveyContainer").Survey({ model: survey });
                 })
                 .catch(err => {
-                    document.getElementById('surveyContainer').innerText = "Erreur lors du chargement du questionnaire.";
                     console.error(err);
+                    document.getElementById('surveyContainer').innerText = "Erreur de chargement.";
                 });
         })();
     </script>
