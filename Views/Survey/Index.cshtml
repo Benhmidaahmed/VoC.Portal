@@ -7,8 +7,21 @@
 
 @section Styles {
     @* CSS de SurveyJS *@
-    <link href="https://cdn.jsdelivr.net/npm/survey-core/survey.min.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/survey-core/defaultV2.min.css" rel="stylesheet" />
+    
+    <link href="https://unpkg.com/survey-jquery/defaultV2.min.css" rel="stylesheet" />
+    <style>
+        .sv-root-modern {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .sv-container-modern {
+            max-width: 800px;
+            margin: auto;
+        }
+    </style>
+
 }
 
 <div class="container">
@@ -19,7 +32,12 @@
 </div>
 
 @section Scripts {
-    <script src="https://cdn.jsdelivr.net/npm/survey-jquery/survey.jquery.min.js"></script>
+    @* <script src="https://cdn.jsdelivr.net/npm/survey-jquery/survey.jquery.min.js"></script> *@
+    <!-- ? jQuery (OBLIGATOIRE) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- ? SurveyJS jQuery (version cohérente) -->
+    <script src="https://unpkg.com/survey-jquery/survey.jquery.min.js"></script>
 
     <script>
         (function () {
