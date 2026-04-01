@@ -1,21 +1,24 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Xrmbox.VoC.Portal.Services; // Assure-toi que c'est le bon namespace pour DataverseService
+using Microsoft.EntityFrameworkCore;
+using Xrmbox.VoC.Portal.Services;
+using Xrmbox.VoC.Portal.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- 1. ENREGISTREMENT DES SERVICES ---
+// Connection string (lue depuis appsettings.json ou variable d'environnement)
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' introuvable.");
 
-// Activer Razor Pages + MVC Controllers With Views
+// Enregistrer le DbContext
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(connectionString));
+
+// Services existants
 builder.Services.AddRazorPages();
 builder.Services.AddControllersWithViews();
-
-// AJOUT CRUCIAL : Enregistrer DataverseService pour l'injection de dépendances
-// On utilise AddScoped pour qu'une nouvelle connexion soit créée par requête HTTP
 builder.Services.AddScoped<DataverseService>();
-
-// Optionnel : Si ton DataverseService a besoin de HttpClient (souvent le cas)
 builder.Services.AddHttpClient();
 
 // --- 2. CONFIGURATION DE L'APPLICATION ---
@@ -42,4 +45,4 @@ app.MapControllerRoute(
 
 app.MapRazorPages();
 
-app.Run();
+app.Run();  

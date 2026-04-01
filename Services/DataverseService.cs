@@ -8,6 +8,9 @@ using Microsoft.Xrm.Sdk.Query;
 using Microsoft.Crm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Metadata;
 using Microsoft.Xrm.Sdk.Messages;
+using Xrmbox.VoC.Portal.Data;
+using Xrmbox.VoC.Portal.Models.Local;
+using Microsoft.EntityFrameworkCore;
 
 namespace Xrmbox.VoC.Portal.Services
 {
@@ -19,10 +22,13 @@ namespace Xrmbox.VoC.Portal.Services
     public class DataverseService : IDisposable
     {
         private readonly ServiceClient _client;
+        private readonly AppDbContext _dbContext;
 
-        public DataverseService(IConfiguration configuration)
+        public DataverseService(IConfiguration configuration, AppDbContext dbContext)
         {
             if (configuration == null) throw new ArgumentNullException(nameof(configuration));
+            if (dbContext == null) throw new ArgumentNullException(nameof(dbContext));
+
             var conn = configuration["Dataverse:ConnectionString"];
             if (string.IsNullOrWhiteSpace(conn))
             {
@@ -34,6 +40,8 @@ namespace Xrmbox.VoC.Portal.Services
             {
                 throw new InvalidOperationException("Impossible de se connecter à Dataverse via ServiceClient. Vérifiez la connection string.");
             }
+
+            _dbContext = dbContext;
         }
 
         /// <summary>
@@ -126,10 +134,95 @@ namespace Xrmbox.VoC.Portal.Services
         }
 
         /// <summary>
-        /// Enregistre la réponse. 
-        /// Modifié pour accepter les soumissions sans ParticipantId ou CampagneId.
+        /// Tente de synchroniser une LocalResponse vers Dataverse.
+        /// Met à jour les champs IsSynced, DataverseId et SyncError en base locale.
         /// </summary>
-        public Guid SubmitResponse(Models.SubmitResponseRequest req)
+        public void SyncLocalResponseToDataverse(LocalResponse local)
+        {
+            if (local == null) throw new ArgumentNullException(nameof(local));
+
+            const string entityName = "xrmbox_reponsedesatisfaction";
+            var dtEntity = new Entity(entityName);
+
+            try
+            {
+                dtEntity["xrmbox_name"] = local.Name;
+                dtEntity["xrmbox_questionnairedesatisfaction"] = new EntityReference("xrmbox_questionnairedesatisfaction", local.SurveyId);
+
+                if (local.ParticipantId.HasValue && local.ParticipantId.Value != Guid.Empty)
+                {
+                    dtEntity["xrmbox_participant"] = new EntityReference("xrmbox_participantalacampagne", local.ParticipantId.Value);
+                }
+
+                if (local.CampagneId.HasValue && local.CampagneId.Value != Guid.Empty)
+                {
+                    dtEntity["xrmbox_campagnedesatisfaction"] = new EntityReference("xrmbox_campagnedesatisfaction", local.CampagneId.Value);
+                }
+
+                // Utilise le nom logique exact que tu viens de créer
+                dtEntity["cr7a2_reponsesjson"] = local.ResponseJson;
+
+                var createdId = _client.Create(dtEntity);
+
+                local.IsSynced = true;
+                local.DataverseId = createdId.ToString();
+                local.SyncError = null;
+
+                _dbContext.LocalResponses.Update(local);
+                _dbContext.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+                // En cas d'erreur, enregistrer le message d'erreur pour diagnostics
+                local.IsSynced = false;
+                local.SyncError = ex.ToString();
+
+                try
+                {
+                    _dbContext.LocalResponses.Update(local);
+                    _dbContext.SaveChanges();
+                }
+                catch (Exception saveEx)
+                {
+                    Console.WriteLine($"[Dataverse Error] Failed to persist sync error for LocalResponse Id {local.Id}: {saveEx.Message}");
+                }
+            }
+        }
+
+        public void SyncPendingResponses()
+        {
+            // 1. On récupère les IDs uniquement pour éviter les problèmes de cache EF
+            var pendingIds = _dbContext.LocalResponses
+                .AsNoTracking()
+                .Where(r => !r.IsSynced)
+                .Select(r => r.Id)
+                .ToList();
+
+            if (!pendingIds.Any()) return;
+
+            Console.WriteLine($"[Sync] Relance de {pendingIds.Count} anciennes réponses...");
+
+            foreach (var id in pendingIds)
+            {
+                // 2. On récupère proprement l'entité par son ID pour chaque itération
+                var response = _dbContext.LocalResponses.Find(id);
+
+                if (response != null)
+                {
+                    // On tente la synchro
+                    SyncLocalResponseToDataverse(response);
+                }
+            }
+
+            // 3. On sauvegarde tout à la fin
+            _dbContext.SaveChanges();
+        }
+
+
+        /// <summary>
+        /// Enregistre la réponse localement, tente la synchronisation immédiate puis retourne l'ID local (int) ou l'ID Dataverse (GUID) sous forme de chaîne.
+        /// </summary>
+        public string SubmitResponse(Models.SubmitResponseRequest req)
         {
             if (req == null) throw new ArgumentNullException(nameof(req));
 
@@ -137,41 +230,41 @@ namespace Xrmbox.VoC.Portal.Services
             if (req.SurveyId == Guid.Empty) throw new ArgumentException("SurveyId requis");
             if (string.IsNullOrWhiteSpace(req.ResponseJson)) throw new ArgumentException("ResponseJson requis");
 
-            const string entityName = "xrmbox_reponsedesatisfaction";
-            var entity = new Entity(entityName);
-
-            // On stocke le JSON dans le nom ou un champ dédié
-            entity["xrmbox_name"] = "Réponse Portail - " + DateTime.Now.ToString("g");
-
-            // Lien vers le questionnaire (Obligatoire)
-            entity["xrmbox_questionnairedesatisfaction"] = new EntityReference("xrmbox_questionnairedesatisfaction", req.SurveyId);
-
-            // --- GESTION DES IDS OPTIONNELS (POUR LES NON-CONNECTÉS / ANONYMES) ---
-
-            // Si CampagneId est fourni dans l'URL et valide
-            if (req.CampagneId.HasValue && req.CampagneId.Value != Guid.Empty)
+            // Construire l'objet local
+            var local = new LocalResponse
             {
-                entity["xrmbox_campagnedesatisfaction"] = new EntityReference("xrmbox_campagnedesatisfaction", req.CampagneId.Value);
-            }
-
-            // Si ParticipantId est fourni dans l'URL et valide
-            if (req.ParticipantId.HasValue && req.ParticipantId.Value != Guid.Empty)
-            {
-                // Vérifier si la table cible est 'xrmbox_participant' ou 'contact' selon ton environnement
-                entity["xrmbox_participant"] = new EntityReference("xrmbox_participantalacampagne", req.ParticipantId.Value);
-            }
-
-            // Optionnel : stocker le JSON dans un champ spécifique si tu en as un
-            // entity["xrmbox_rawjson"] = req.ResponseJson;
+                Name = "Réponse Portail - " + DateTime.Now.ToString("g"),
+                SurveyId = req.SurveyId,
+                ParticipantId = req.ParticipantId,
+                CampagneId = req.CampagneId,
+                ResponseJson = req.ResponseJson,
+                SubmittedAt = DateTime.Now,
+                IsSynced = false,
+                DataverseId = null,
+                SyncError = null
+            };
 
             try
             {
-                var createdId = _client.Create(entity);
-                return createdId;
+                // Sauvegarde locale
+                _dbContext.LocalResponses.Add(local);
+                _dbContext.SaveChanges(); // obtient l'Id local
+
+                // Tentative de synchronisation immédiate
+                SyncLocalResponseToDataverse(local);
+                SyncPendingResponses();
+
+                // Retourner l'ID Dataverse si synchronisé, sinon l'ID local en string
+                if (local.IsSynced && !string.IsNullOrWhiteSpace(local.DataverseId))
+                {
+                    return local.DataverseId!;
+                }
+
+                return local.Id.ToString();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Dataverse Error] SubmitResponse failed: {ex.Message}");
+                Console.WriteLine($"[Dataverse Error] SubmitResponse failed (local persist): {ex.Message}");
                 throw;
             }
         }
