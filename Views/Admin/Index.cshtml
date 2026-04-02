@@ -1,0 +1,33 @@
+﻿@{
+    ViewData["Title"] = "Gestion des Invitations";
+}
+
+<div class="container mt-4">
+    <h2>🚀 Envoyer les invitations aux participants</h2>
+    <hr />
+
+    @if (ViewData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @ViewData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form asp-action="SendInvitations" method="post">
+                <div class="form-group mb-3">
+                    <label class="form-label fw-bold">ID de la Campagne (GUID Dataverse) :</label>
+                    <input type="text" name="campaignId" class="form-control"
+                           placeholder="Ex: 8a7b6c5d-e4f3-a2b1-c0d9-e8f7a6b5c4d3" required />
+                    <small class="text-muted">Copiez l'ID depuis l'URL de votre campagne dans PowerApps.</small>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-send"></i> Lancer l'envoi des emails
+                </button>
+            </form>
+        </div>
+    </div>
+</div>

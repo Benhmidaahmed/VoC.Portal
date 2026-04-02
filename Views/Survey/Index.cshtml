@@ -1,8 +1,10 @@
 @{
     ViewData["Title"] = "Survey";
-    var surveyId = Context.Request.Query["id"].ToString();
-    var participantId = Context.Request.Query["participantId"].ToString();
-    var campagneId = Context.Request.Query["campagneId"].ToString();
+
+    // Utiliser les valeurs passées par le controller via ViewBag
+    var surveyId = (ViewBag.SurveyId ?? string.Empty).ToString();
+    var participantId = (ViewBag.ParticipantId ?? string.Empty).ToString();
+    var token = (ViewBag.Token ?? string.Empty).ToString();
 }
 
 @section Styles {
@@ -46,7 +48,7 @@
 
             const surveyId = '@surveyId';
             const participantId = '@participantId';
-            const campagneId = '@campagneId';
+            const token = '@token';
 
             if (!surveyId) {
                 document.getElementById('surveyContainer').innerText = "ID du questionnaire manquant.";
@@ -61,14 +63,15 @@
                 .then(json => {
                     const survey = new Survey.Model(json);
 
-                         survey.onComplete.add(function (sender) {
+                    survey.onComplete.add(function (sender) {
                         const payload = {
                             // On utilise des MAJUSCULES pour correspondre au modèle C#
                             SurveyId: surveyId,
                             ParticipantId: participantId || null,
-                            CampagneId: campagneId || null,
-                            ResponseJson: JSON.stringify(sender.data)
-                        };  
+                            CampagneId: null,
+                            ResponseJson: JSON.stringify(sender.data),
+                            Token: token || null
+                        };
 
                         fetch('/api/responses', {
                             method: 'POST',
@@ -77,6 +80,8 @@
                         }).then(r => {
                             if (r.ok) {
                                 document.getElementById('surveyContainer').innerHTML = "<h4>Merci !</h4>";
+                            } else {
+                                document.getElementById('surveyContainer').innerHTML = "<h4>Erreur lors de l'enregistrement de la réponse.</h4>";
                             }
                         });
                     });

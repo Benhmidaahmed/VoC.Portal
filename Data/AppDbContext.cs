@@ -8,6 +8,7 @@ namespace Xrmbox.VoC.Portal.Data
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
         }
+        public DbSet<SurveyInvitation> SurveyInvitations { get; set; }
 
         public DbSet<LocalResponse> LocalResponses { get; set; } = null!;
 

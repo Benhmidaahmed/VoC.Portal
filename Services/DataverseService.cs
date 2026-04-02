@@ -19,7 +19,10 @@ namespace Xrmbox.VoC.Portal.Services
         public string? ConnectionString { get; set; }
     }
 
-    public class DataverseService : IDisposable
+    public record CampaignDto(Guid Id, string Name);
+    public record ParticipantDto(Guid Id, string? Email);
+
+    public partial class DataverseService : IDisposable
     {
         private readonly ServiceClient _client;
         private readonly AppDbContext _dbContext;
@@ -134,6 +137,64 @@ namespace Xrmbox.VoC.Portal.Services
         }
 
         /// <summary>
+        /// Récupère toutes les campagnes (xrmbox_campagnedesatisfaction) en sélectionnant l'id logique et le nom.
+        /// </summary>
+        public IEnumerable<CampaignDto> GetAllCampaigns()
+        {
+            try
+            {
+                var query = new QueryExpression("xrmbox_campagnedesatisfaction")
+                {
+                    ColumnSet = new ColumnSet("xrmbox_campagnedesatisfactionid", "xrmbox_name")
+                };
+
+                var results = _client.RetrieveMultiple(query);
+                return results.Entities
+                    .Select(e => new CampaignDto(
+                        e.Id,
+                        e.GetAttributeValue<string>("xrmbox_name") ?? string.Empty))
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Dataverse Error] GetAllCampaigns failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Récupère les participants pour une campagne donnée (lookup xrmbox_campagnedesatisfaction).
+        /// Sélectionne l'id primaire et le champ email xrmbox_adressecourriel.
+        /// </summary>
+        public IEnumerable<ParticipantDto> GetParticipantsByCampaign(Guid campaignId)
+        {
+            if (campaignId == Guid.Empty) throw new ArgumentException("campaignId invalide", nameof(campaignId));
+
+            try
+            {
+                var query = new QueryExpression("xrmbox_participantalacampagne")
+                {
+                    ColumnSet = new ColumnSet("xrmbox_participantalacampagneid", "xrmbox_adressecourriel"),
+                    Criteria = new FilterExpression()
+                };
+
+                query.Criteria.AddCondition("xrmbox_campagnedesatisfaction", ConditionOperator.Equal, campaignId);
+
+                var results = _client.RetrieveMultiple(query);
+                return results.Entities
+                    .Select(e => new ParticipantDto(
+                        e.Id,
+                        e.GetAttributeValue<string>("xrmbox_adressecourriel")))
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Dataverse Error] GetParticipantsByCampaign failed for '{campaignId}': {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Tente de synchroniser une LocalResponse vers Dataverse.
         /// Met à jour les champs IsSynced, DataverseId et SyncError en base locale.
         /// </summary>
@@ -150,8 +211,8 @@ namespace Xrmbox.VoC.Portal.Services
                 dtEntity["xrmbox_questionnairedesatisfaction"] = new EntityReference("xrmbox_questionnairedesatisfaction", local.SurveyId);
 
                 if (local.ParticipantId.HasValue && local.ParticipantId.Value != Guid.Empty)
-                {
-                    dtEntity["xrmbox_participant"] = new EntityReference("xrmbox_participantalacampagne", local.ParticipantId.Value);
+                {   
+                    dtEntity["xrmbox_participantalacampagne"] = new EntityReference("xrmbox_participantalacampagne", local.ParticipantId.Value);
                 }
 
                 if (local.CampagneId.HasValue && local.CampagneId.Value != Guid.Empty)
@@ -266,6 +327,48 @@ namespace Xrmbox.VoC.Portal.Services
             {
                 Console.WriteLine($"[Dataverse Error] SubmitResponse failed (local persist): {ex.Message}");
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Tente de récupérer l'ID du questionnaire (Survey) associé à un participant Dataverse
+        /// en suivant participant -> campagne -> questionnaire.
+        /// Retourne null si non trouvé.
+        /// </summary>
+        public Guid? GetSurveyIdForParticipant(Guid participantId)
+        {
+            if (participantId == Guid.Empty) throw new ArgumentException("participantId invalide", nameof(participantId));
+
+            try
+            {
+                // 1) Récupérer le participant
+                var participant = _client.Retrieve("xrmbox_participantalacampagne", participantId, new ColumnSet("xrmbox_campagnedesatisfaction"));
+
+                if (participant == null || !participant.Contains("xrmbox_campagnedesatisfaction"))
+                {
+                    Console.WriteLine("[DEBUG] Le participant n'est pas lié à une campagne.");
+                    return null;
+                }
+
+                var campRef = participant.GetAttributeValue<EntityReference>("xrmbox_campagnedesatisfaction");
+                if (campRef == null) return null;
+
+                // 2) Récupérer la campagne avec le BON NOM DE CHAMP : xrmbox_questionnaire
+                var campaign = _client.Retrieve("xrmbox_campagnedesatisfaction", campRef.Id, new ColumnSet("xrmbox_questionnaire"));
+
+                if (campaign == null || !campaign.Contains("xrmbox_questionnaire"))
+                {
+                    Console.WriteLine("[DEBUG] Le champ xrmbox_questionnaire est vide dans la campagne.");
+                    return null;
+                }
+
+                var surveyRef = campaign.GetAttributeValue<EntityReference>("xrmbox_questionnaire");
+                return surveyRef?.Id;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Dataverse Error] GetSurveyIdForParticipant failed: {ex.Message}");
+                return null;
             }
         }
 

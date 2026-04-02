@@ -20,7 +20,7 @@ builder.Services.AddRazorPages();
 builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<DataverseService>();
 builder.Services.AddHttpClient();
-
+builder.Services.AddTransient<IEmailService, EmailService>();
 // --- 2. CONFIGURATION DE L'APPLICATION ---
 
 var app = builder.Build();
