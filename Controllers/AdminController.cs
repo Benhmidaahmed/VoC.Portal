@@ -66,7 +66,8 @@ namespace Xrmbox.VoC.Portal.Controllers
                     await _dbContext.SaveChangesAsync();
 
                     var subject = "Votre avis nous intéresse";
-                    var body = $"Cliquez ici pour répondre au sondage : https://localhost:7265/Admin/Fill?token={token}";
+                    
+                    var body = $"Please complete our survey by clicking here: https://localhost:7265/Survey/Fill?token={token}";
 
                     try
                     {
@@ -112,7 +113,7 @@ namespace Xrmbox.VoC.Portal.Controllers
                 }
 
                 // 1. Récupérer l'ID du questionnaire via le service Dataverse
-                var surveyId = _dataverseService.GetSurveyIdForParticipant(invitation.ParticipantDataverseId);
+                var surveyId = _dataverseService.GetSurveyContextInfo(invitation.ParticipantDataverseId);
                 // 2. DEBUG : Regarde ces logs dans ta console de sortie Visual Studio
                 Console.WriteLine($"--- DEBUG PFE ---");
                 Console.WriteLine($"Participant ID: {invitation.ParticipantDataverseId}");

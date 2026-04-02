@@ -135,122 +135,63 @@ namespace Xrmbox.VoC.Portal.Controllers
 
     // Contrôleur MVC (hérite de Controller) — rend une vue Razor
 
-    public class SurveyViewController : Controller
-
+    public class SurveyController : Controller
     {
-
         private readonly AppDbContext _dbContext;
-
         private readonly DataverseService _dataverseService;
 
-
-
-        public SurveyViewController(AppDbContext dbContext, DataverseService dataverseService)
-
+        public SurveyController(AppDbContext dbContext, DataverseService dataverseService)
         {
-
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-
             _dataverseService = dataverseService ?? throw new ArgumentNullException(nameof(dataverseService));
-
         }
 
-
-
-        // GET /Survey/View?token={token}
-
+        // Cette action répondra à : /Survey/Fill?token=...
         [HttpGet]
-
-        public IActionResult Index()
-
-        {
-
-            return View();
-
-        }
-
-
-
-        // Nouvelle action Fill : récupère l'invitation par token, vérifie validité,
-
-        // récupère ParticipantDataverseId et SurveyId (via Dataverse) puis retourne la vue Index du survey.
-
         [HttpGet]
-
         public async Task<IActionResult> Fill(Guid token)
-
         {
-
             if (token == Guid.Empty)
-
             {
-
-                TempData["ErrorMessage"] = "Lien invalide.";
-
+                TempData["ErrorMessage"] = "Invalid link.";
                 return RedirectToAction("Index", "Home");
-
             }
-
-
 
             try
-
             {
-
                 var invitation = await _dbContext.SurveyInvitations
-
                     .AsNoTracking()
-
                     .SingleOrDefaultAsync(i => i.Token == token);
 
-
-
                 if (invitation == null || invitation.IsUsed || invitation.ExpirationDate <= DateTime.Now)
-
                 {
-
-                    TempData["ErrorMessage"] = "Le lien n'est plus valide ou a expiré.";
-
+                    TempData["ErrorMessage"] = "This link is no longer valid or has expired.";
                     return RedirectToAction("Index", "Home");
-
                 }
 
+                // --- MODIFICATION ICI ---
+                // On récupère le contexte complet (Survey + Campagne) depuis Dataverse
+                var context = _dataverseService.GetSurveyContextInfo(invitation.ParticipantDataverseId);
 
-
-                // Récupérer SurveyId via Dataverse en naviguant participant -> campagne -> questionnaire
-
-                var surveyId = _dataverseService.GetSurveyIdForParticipant(invitation.ParticipantDataverseId);
-
-
+                if (context == null)
+                {
+                    TempData["ErrorMessage"] = "Could not retrieve survey details.";
+                    return RedirectToAction("Index", "Home");
+                }
 
                 ViewBag.ParticipantId = invitation.ParticipantDataverseId;
-
                 ViewBag.Token = invitation.Token;
+                ViewBag.SurveyId = context.SurveyId?.ToString() ?? string.Empty;
+                ViewBag.CampagneId = context.CampagneId?.ToString() ?? string.Empty; // On passe l'ID de la campagne à la vue
 
-                ViewBag.SurveyId = surveyId?.ToString() ?? string.Empty;
-
-
-
-                // Retourner la vue Survey (index) — forcer le chemin pour pointer vers Views/Survey/Index.cshtml
-
-                return View("~/Views/Survey/Index.cshtml");
-
+                return View("Index");
             }
-
             catch (Exception ex)
-
             {
-
-                Console.WriteLine($"[SurveyView Fill] Erreur: {ex.Message}");
-
-                TempData["ErrorMessage"] = "Une erreur est survenue lors du traitement du lien.";
-
+                Console.WriteLine($"[Survey Fill] Error: {ex.Message}");
+                TempData["ErrorMessage"] = "An error occurred while processing the link.";
                 return RedirectToAction("Index", "Home");
-
             }
-
         }
-
     }
-
 }

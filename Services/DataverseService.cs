@@ -193,6 +193,11 @@ namespace Xrmbox.VoC.Portal.Services
                 throw;
             }
         }
+        public class SurveyContextInfo
+        {
+            public Guid? SurveyId { get; set; }
+            public Guid? CampagneId { get; set; }
+        }
 
         /// <summary>
         /// Tente de synchroniser une LocalResponse vers Dataverse.
@@ -202,51 +207,57 @@ namespace Xrmbox.VoC.Portal.Services
         {
             if (local == null) throw new ArgumentNullException(nameof(local));
 
+            // Nom logique de la table de destination
             const string entityName = "xrmbox_reponsedesatisfaction";
             var dtEntity = new Entity(entityName);
 
             try
             {
                 dtEntity["xrmbox_name"] = local.Name;
+
+                // 1. Lien vers le Questionnaire
                 dtEntity["xrmbox_questionnairedesatisfaction"] = new EntityReference("xrmbox_questionnairedesatisfaction", local.SurveyId);
 
+                // 2. Lien vers le Participant (FIX APPLIQUÉ ICI)
                 if (local.ParticipantId.HasValue && local.ParticipantId.Value != Guid.Empty)
-                {   
-                    dtEntity["xrmbox_participantalacampagne"] = new EntityReference("xrmbox_participantalacampagne", local.ParticipantId.Value);
+                {
+                    // On utilise le nom logique du champ : xrmbox_participant
+                    // Mais la table cible reste : xrmbox_participantalacampagne
+                    dtEntity["xrmbox_participant"] = new EntityReference("xrmbox_participantalacampagne", local.ParticipantId.Value);
                 }
 
+                // 3. Lien vers la Campagne
                 if (local.CampagneId.HasValue && local.CampagneId.Value != Guid.Empty)
                 {
                     dtEntity["xrmbox_campagnedesatisfaction"] = new EntityReference("xrmbox_campagnedesatisfaction", local.CampagneId.Value);
                 }
 
-                // Utilise le nom logique exact que tu viens de créer
+                // 4. Données JSON du sondage (SurveyJS)
                 dtEntity["cr7a2_reponsesjson"] = local.ResponseJson;
 
+                // Envoi vers Dataverse
                 var createdId = _client.Create(dtEntity);
 
+                // Mise à jour SQL locale si succès
                 local.IsSynced = true;
                 local.DataverseId = createdId.ToString();
                 local.SyncError = null;
 
                 _dbContext.LocalResponses.Update(local);
                 _dbContext.SaveChanges();
+
+                Console.WriteLine($"[Sync Success] Response {local.Id} synced to Dataverse ID: {createdId}");
             }
             catch (Exception ex)
             {
-                // En cas d'erreur, enregistrer le message d'erreur pour diagnostics
+                // Enregistrement de l'erreur dans SQL pour debug
                 local.IsSynced = false;
-                local.SyncError = ex.ToString();
+                local.SyncError = ex.Message;
 
-                try
-                {
-                    _dbContext.LocalResponses.Update(local);
-                    _dbContext.SaveChanges();
-                }
-                catch (Exception saveEx)
-                {
-                    Console.WriteLine($"[Dataverse Error] Failed to persist sync error for LocalResponse Id {local.Id}: {saveEx.Message}");
-                }
+                _dbContext.LocalResponses.Update(local);
+                _dbContext.SaveChanges();
+
+                Console.WriteLine($"[Sync Error] {ex.Message}");
             }
         }
 
@@ -287,9 +298,20 @@ namespace Xrmbox.VoC.Portal.Services
         {
             if (req == null) throw new ArgumentNullException(nameof(req));
 
-            // Seuls SurveyId et ResponseJson sont obligatoires
             if (req.SurveyId == Guid.Empty) throw new ArgumentException("SurveyId requis");
             if (string.IsNullOrWhiteSpace(req.ResponseJson)) throw new ArgumentException("ResponseJson requis");
+
+            // Remplacez ce bloc dans la méthode SubmitResponse
+
+            Guid? campagneGuid = req.CampagneId;
+            if (req.CampagneId.HasValue && req.CampagneId.Value != Guid.Empty)
+            {
+                campagneGuid = req.CampagneId.Value;
+            }
+            else
+            {
+                campagneGuid = null;
+            }
 
             // Construire l'objet local
             var local = new LocalResponse
@@ -297,7 +319,7 @@ namespace Xrmbox.VoC.Portal.Services
                 Name = "Réponse Portail - " + DateTime.Now.ToString("g"),
                 SurveyId = req.SurveyId,
                 ParticipantId = req.ParticipantId,
-                CampagneId = req.CampagneId,
+                CampagneId = campagneGuid, // <-- mapping corrigé ici
                 ResponseJson = req.ResponseJson,
                 SubmittedAt = DateTime.Now,
                 IsSynced = false,
@@ -335,39 +357,40 @@ namespace Xrmbox.VoC.Portal.Services
         /// en suivant participant -> campagne -> questionnaire.
         /// Retourne null si non trouvé.
         /// </summary>
-        public Guid? GetSurveyIdForParticipant(Guid participantId)
+        public dynamic GetSurveyContextInfo(Guid participantId)
         {
-            if (participantId == Guid.Empty) throw new ArgumentException("participantId invalide", nameof(participantId));
+            if (participantId == Guid.Empty) return null;
 
             try
             {
-                // 1) Récupérer le participant
-                var participant = _client.Retrieve("xrmbox_participantalacampagne", participantId, new ColumnSet("xrmbox_campagnedesatisfaction"));
+                // 1) Récupérer le participant et son lien vers la campagne
+                var participant = _client.Retrieve("xrmbox_participantalacampagne", participantId,
+                    new ColumnSet("xrmbox_campagnedesatisfaction"));
 
-                if (participant == null || !participant.Contains("xrmbox_campagnedesatisfaction"))
+                var campRef = participant.GetAttributeValue<EntityReference>("xrmbox_campagnedesatisfaction");
+
+                if (campRef == null)
                 {
                     Console.WriteLine("[DEBUG] Le participant n'est pas lié à une campagne.");
                     return null;
                 }
 
-                var campRef = participant.GetAttributeValue<EntityReference>("xrmbox_campagnedesatisfaction");
-                if (campRef == null) return null;
-
-                // 2) Récupérer la campagne avec le BON NOM DE CHAMP : xrmbox_questionnaire
-                var campaign = _client.Retrieve("xrmbox_campagnedesatisfaction", campRef.Id, new ColumnSet("xrmbox_questionnaire"));
-
-                if (campaign == null || !campaign.Contains("xrmbox_questionnaire"))
-                {
-                    Console.WriteLine("[DEBUG] Le champ xrmbox_questionnaire est vide dans la campagne.");
-                    return null;
-                }
+                // 2) Récupérer la campagne pour avoir l'ID du questionnaire (xrmbox_questionnaire)
+                var campaign = _client.Retrieve("xrmbox_campagnedesatisfaction", campRef.Id,
+                    new ColumnSet("xrmbox_questionnaire"));
 
                 var surveyRef = campaign.GetAttributeValue<EntityReference>("xrmbox_questionnaire");
-                return surveyRef?.Id;
+
+                // On retourne un objet contenant les deux IDs
+                return new
+                {
+                    SurveyId = surveyRef?.Id,
+                    CampagneId = campRef.Id
+                };
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Dataverse Error] GetSurveyIdForParticipant failed: {ex.Message}");
+                Console.WriteLine($"[Dataverse Error] GetSurveyContextInfo failed: {ex.Message}");
                 return null;
             }
         }
