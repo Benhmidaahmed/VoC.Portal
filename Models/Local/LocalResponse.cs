@@ -14,5 +14,7 @@ namespace Xrmbox.VoC.Portal.Models.Local
         public bool IsSynced { get; set; } = false;
         public string? DataverseId { get; set; }
         public string? SyncError { get; set; }
+        public Guid? Token { get; set; } // Pour lier la réponse à l'invitation facilement
+public bool IsCompleted { get; set; } = false; // Pour différencier brouillon et réponse finale
     }
 }

@@ -6,6 +6,7 @@
     var participantId = (ViewBag.ParticipantId ?? string.Empty).ToString();
     var token = (ViewBag.Token ?? string.Empty).ToString();
     var campagneId = (ViewBag.CampagneId ?? string.Empty).ToString();
+    // ViewBag.SavedData peut contenir du JSON (objet) ou null
 }
 
 @section Styles {
@@ -37,56 +38,93 @@
 @section Scripts {
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/survey-jquery/survey.jquery.min.js"></script>
+    <script>
+        (function () {
+            Survey.StylesManager.applyTheme("defaultV2");
 
-        <script>
-            (function () {
-                Survey.StylesManager.applyTheme("defaultV2");
+            const surveyId = '@surveyId';
+            const participantId = '@participantId';
+            const token = '@token';
+            const campagneId = '@campagneId';
 
-                const surveyId = '@surveyId';
-                const participantId = '@participantId';
-                const token = '@token';
-                const campagneId = '@campagneId';
-
-                if (!surveyId) {
-                    document.getElementById('surveyContainer').innerText = "ID du questionnaire manquant.";
-                    return;
+            // Correction 1: Injection sécurisée du JSON
+            const rawSavedData = `@Html.Raw(ViewBag.SavedData ?? "null")`;
+            let savedData = null;
+            if (rawSavedData !== "null") {
+                try {
+                    savedData = JSON.parse(rawSavedData);
+                } catch (e) {
+                    // Si c'est déjà un objet (selon comment le controller l'envoie)
+                    savedData = @Html.Raw(ViewBag.SavedData ?? "null");
                 }
+            }
 
-                fetch(`/api/surveys/${encodeURIComponent(surveyId)}`)
-                    .then(response => {
-                        if (!response.ok) throw new Error('Erreur API');
-                        return response.json();
-                    })
-                    .then(json => {
-                        const survey = new Survey.Model(json);
+            if (!surveyId) {
+                document.getElementById('surveyContainer').innerText = "ID du questionnaire manquant.";
+                return;
+            }
 
-                        survey.onComplete.add(function (sender) {
+            fetch(`/api/surveys/${encodeURIComponent(surveyId)}`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Erreur API');
+                    return response.json();
+                })
+                .then(json => {
+                    const survey = new Survey.Model(json);
+
+                    if (savedData) {
+                        survey.data = savedData;
+                    }
+
+                    let saveTimeout = null;
+                    survey.onValueChanged.add(function (sender) {
+                        if (!token) return;
+
+                        if (saveTimeout) clearTimeout(saveTimeout);
+                        saveTimeout = setTimeout(function () {
                             const payload = {
-                                SurveyId: surveyId,
-                                ParticipantId: participantId || null,
-                                // Envoi de la campagne telle quelle (string GUID) vers le serveur
-                                CampagneId: campagneId || null,
-                                ResponseJson: JSON.stringify(sender.data),
-                                Token: token || null
+                                token: token,
+                                jsonData: JSON.stringify(sender.data)
                             };
 
-                            fetch('/api/responses', {
+                            // Attention : vérifie si ton API est /api/responses/partial ou /Survey/SavePartial
+                            fetch('/Survey/SavePartial', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload)
-                            }).then(r => {
-                                if (r.ok) {
-                                    document.getElementById('surveyContainer').innerHTML = "<h4>Merci !</h4>";
-                                } else {
-                                    document.getElementById('surveyContainer').innerHTML = "<h4>Erreur lors de l'enregistrement de la réponse.</h4>";
-                                }
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: new URLSearchParams(payload)
                             });
-                        });
+                        }, 1000);
+                    });
 
-                        $("#surveyContainer").Survey({ model: survey });
-                    })
-                    .catch(err => {
-                        console.error(err);
+                    survey.onComplete.add(function (sender) {
+                        const payload = {
+                            SurveyId: surveyId,
+                            ParticipantId: participantId || null,
+                            CampagneId: campagneId || null,
+                            ResponseJson: JSON.stringify(sender.data),
+                            Token: token || null
+                        };
+
+                        fetch('/api/responses', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        })
+                        // CORRECTION ICI : Ajout des parenthèses (r) =>
+                        .then((r) => {
+                            if (r.ok) {
+                                document.getElementById('surveyContainer').innerHTML = "<h4>Merci !</h4>";
+                            } else {
+                                document.getElementById('surveyContainer').innerHTML = "<h4>Erreur lors de l'enregistrement.</h4>";
+                            }
+                        })
+                        .catch(err => console.error("Erreur finale:", err));
+                    });
+
+                    $("#surveyContainer").Survey({ model: survey });
+                })
+                .catch(err => {
+                    console.error(err);
                     document.getElementById('surveyContainer').innerText = "Erreur de chargement.";
                 });
         })();

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xrmbox.VoC.Portal.Data;
 
@@ -11,9 +12,11 @@ using Xrmbox.VoC.Portal.Data;
 namespace Xrmbox.VoC.Portal.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260402170528_InitialBase")]
+    partial class InitialBase
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -36,9 +39,6 @@ namespace Xrmbox.VoC.Portal.Migrations
                     b.Property<string>("DataverseId")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<bool>("IsCompleted")
-                        .HasColumnType("bit");
 
                     b.Property<bool>("IsSynced")
                         .ValueGeneratedOnAdd()
@@ -67,9 +67,6 @@ namespace Xrmbox.VoC.Portal.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
-                    b.Property<Guid?>("Token")
-                        .HasColumnType("uniqueidentifier");
-
                     b.HasKey("Id");
 
                     b.ToTable("LocalResponses", (string)null);
@@ -89,17 +86,8 @@ namespace Xrmbox.VoC.Portal.Migrations
                     b.Property<bool>("IsUsed")
                         .HasColumnType("bit");
 
-                    b.Property<DateTime?>("LastPartialSave")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("LastReminderSent")
-                        .HasColumnType("datetime2");
-
                     b.Property<Guid>("ParticipantDataverseId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("ReminderCount")
-                        .HasColumnType("int");
 
                     b.Property<Guid>("Token")
                         .HasColumnType("uniqueidentifier");

@@ -21,6 +21,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<DataverseService>();
 builder.Services.AddHttpClient();
 builder.Services.AddTransient<IEmailService, EmailService>();
+builder.Services.AddHostedService<ReminderWorker>();
 // --- 2. CONFIGURATION DE L'APPLICATION ---
 
 var app = builder.Build();
