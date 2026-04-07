@@ -59,6 +59,7 @@ namespace Xrmbox.VoC.Portal.Controllers
                         Token = token,
                         ParticipantDataverseId = p.Id,
                         ExpirationDate = DateTime.Now.AddDays(7),
+                        //AddMinutes(2),
                         IsUsed = false
                     };
 

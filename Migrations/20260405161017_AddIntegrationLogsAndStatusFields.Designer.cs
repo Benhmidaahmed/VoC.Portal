@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xrmbox.VoC.Portal.Data;
 
@@ -11,9 +12,11 @@ using Xrmbox.VoC.Portal.Data;
 namespace Xrmbox.VoC.Portal.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260405161017_AddIntegrationLogsAndStatusFields")]
+    partial class AddIntegrationLogsAndStatusFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,47 +24,6 @@ namespace Xrmbox.VoC.Portal.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("Xrmbox.VoC.Portal.Models.Local.Campaign", b =>
-                {
-                    b.Property<Guid>("DataverseId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("InvitationBody")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("InvitationSubject")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("LastSync")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ReminderBody")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ReminderSubject")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("StateCode")
-                        .HasColumnType("int");
-
-                    b.Property<int>("StatusCode")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("SurveyDataverseId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("DataverseId");
-
-                    b.HasIndex("SurveyDataverseId");
-
-                    b.ToTable("Campaigns");
-                });
 
             modelBuilder.Entity("Xrmbox.VoC.Portal.Models.Local.IntegrationLog", b =>
                 {
@@ -151,31 +113,6 @@ namespace Xrmbox.VoC.Portal.Migrations
                     b.ToTable("LocalResponses", (string)null);
                 });
 
-            modelBuilder.Entity("Xrmbox.VoC.Portal.Models.Local.Survey", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<Guid>("DataverseId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("JsonContent")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("LastSync")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Surveys");
-                });
-
             modelBuilder.Entity("Xrmbox.VoC.Portal.Models.Local.SurveyInvitation", b =>
                 {
                     b.Property<int>("Id")
@@ -183,9 +120,6 @@ namespace Xrmbox.VoC.Portal.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<Guid>("CampaignDataverseId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("ExpirationDate")
                         .HasColumnType("datetime2");
@@ -224,18 +158,6 @@ namespace Xrmbox.VoC.Portal.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("SurveyInvitations", (string)null);
-                });
-
-            modelBuilder.Entity("Xrmbox.VoC.Portal.Models.Local.Campaign", b =>
-                {
-                    b.HasOne("Xrmbox.VoC.Portal.Models.Local.Survey", "Survey")
-                        .WithMany()
-                        .HasForeignKey("SurveyDataverseId")
-                        .HasPrincipalKey("DataverseId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Survey");
                 });
 #pragma warning restore 612, 618
         }

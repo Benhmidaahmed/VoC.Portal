@@ -52,22 +52,13 @@ namespace Xrmbox.VoC.Portal.Services
 
                         _logger.LogInformation("[ANALYSE] Vérification Invitation ID: {Id} (Token: {Token})", inv.Id, inv.Token);
 
-                        // Calcul des conditions de rappel
-                        // 1. On vérifie si l'utilisateur a commencé (un brouillon existe)
                         bool hasStarted = inv.LastPartialSave.HasValue;
-
-                        // 2. On vérifie si ce brouillon est assez ancien pour envoyer un rappel
                         bool hasStaleDraft = hasStarted && inv.LastPartialSave.Value <= threshold;
-
-                        // 3. On vérifie si un rappel a déjà été envoyé et s'il est temps d'envoyer le SUIVANT
                         bool reminderDelayPassed = inv.LastReminderSent.HasValue && inv.LastReminderSent.Value <= threshold;
 
-                        // 4. LOGS de Debug pour comprendre ce qui se passe dans la console
                         _logger.LogDebug("[DEBUG] ID:{Id} -> A Commencé:{S}, Brouillon Expire:{B}, Délai Rappel Passé:{D}",
                             inv.Id, hasStarted, hasStaleDraft, reminderDelayPassed);
 
-                        // CONDITION FINALE : On n'envoie QUE si l'utilisateur a commencé 
-                        // (soit c'est le 1er rappel après arrêt, soit c'est le rappel 2 ou 3)
                         var shouldSend = hasStaleDraft || reminderDelayPassed;
 
                         if (!shouldSend)
@@ -80,6 +71,7 @@ namespace Xrmbox.VoC.Portal.Services
 
                         // Récupérer l'email du participant via Dataverse
                         string? email = null;
+                        string participantName = string.Empty;
                         try
                         {
                             if (dataverseService != null)
@@ -99,6 +91,8 @@ namespace Xrmbox.VoC.Portal.Services
                                     var participants = dataverseService.GetParticipantsByCampaign(campagneId.Value);
                                     var participant = participants?.FirstOrDefault(p => p.Id == inv.ParticipantDataverseId);
                                     email = participant?.Email;
+                                    // Utiliser l'email comme fallback pour le nom si le nom n'est pas disponible
+                                    participantName = participant?.Email ?? string.Empty;
                                 }
                             }
                             else
@@ -117,10 +111,28 @@ namespace Xrmbox.VoC.Portal.Services
                             continue;
                         }
 
-                        // Préparation et envoi
+                        // Récupérer la campagne liée pour obtenir le template de rappel
+                        var campaign = await db.Campaigns
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(c => c.DataverseId == inv.CampaignDataverseId, stoppingToken);
+
+                        string subjectTemplate = campaign?.ReminderSubject ?? "Rappel : merci de compléter le sondage";
+                        string bodyTemplate = campaign?.ReminderBody ?? $"Bonjour,[br][br]Merci de compléter votre sondage : [SurveyLink][br][br]Cordialement.";
+
                         var link = $"https://localhost:7265/Survey/Fill?token={inv.Token}";
-                        var subject = "Rappel : merci de compléter le sondage";
-                        var body = $"Bonjour,<br/><br/>Merci de compléter votre sondage en suivant ce lien : <a href=\"{link}\">{link}</a><br/><br/>Cordialement.";
+                        var campaignName = campaign?.Name ?? string.Empty;
+
+                        // Remplacements simples de tags
+                        var subject = subjectTemplate
+                            .Replace("[ClientName]", participantName)
+                            .Replace("[CampaignName]", campaignName)
+                            .Replace("[SurveyLink]", link);
+
+                        var body = bodyTemplate
+                            .Replace("[ClientName]", participantName)
+                            .Replace("[CampaignName]", campaignName)
+                            .Replace("[SurveyLink]", link)
+                            .Replace("[br]", "<br/>"); // optionally support [br] marker
 
                         try
                         {
@@ -147,7 +159,6 @@ namespace Xrmbox.VoC.Portal.Services
                     _logger.LogError(ex, "[ERREUR CRITIQUE] Une erreur est survenue dans la boucle du ReminderWorker.");
                 }
 
-                // Pause de 60 secondes avant le prochain cycle
                 _logger.LogInformation("--- [FIN DE BOUCLE] Prochaine vérification dans 60 secondes ---");
                 try
                 {

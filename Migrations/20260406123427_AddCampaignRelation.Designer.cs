@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xrmbox.VoC.Portal.Data;
 
@@ -11,9 +12,11 @@ using Xrmbox.VoC.Portal.Data;
 namespace Xrmbox.VoC.Portal.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260406123427_AddCampaignRelation")]
+    partial class AddCampaignRelation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -28,23 +31,11 @@ namespace Xrmbox.VoC.Portal.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("InvitationBody")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("InvitationSubject")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("LastSync")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ReminderBody")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ReminderSubject")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("StateCode")
@@ -183,9 +174,6 @@ namespace Xrmbox.VoC.Portal.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<Guid>("CampaignDataverseId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("ExpirationDate")
                         .HasColumnType("datetime2");

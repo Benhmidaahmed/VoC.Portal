@@ -12,7 +12,11 @@ namespace Xrmbox.VoC.Portal.Models.Local
         public DateTime ExpirationDate { get; set; }
         public bool IsUsed { get; set; }
         public DateTime? LastPartialSave { get; set; }
-public DateTime? LastReminderSent { get; set; }
-public int ReminderCount { get; set; } = 0;
+        public DateTime? LastReminderSent { get; set; }
+        public int ReminderCount { get; set; } = 0;
+        public Guid CampaignDataverseId { get; set; }
+        // Nouveautés demandées
+        public bool IsActive { get; set; } = true;
+        public string? SyncStatus { get; set; }
     }
 }

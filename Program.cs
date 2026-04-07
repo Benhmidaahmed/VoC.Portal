@@ -21,6 +21,9 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<DataverseService>();
 builder.Services.AddHttpClient();
 builder.Services.AddTransient<IEmailService, EmailService>();
+// Remplacer AddTransient par AddScoped
+builder.Services.AddScoped<IEmailService, EmailService>();
+
 builder.Services.AddHostedService<ReminderWorker>();
 // --- 2. CONFIGURATION DE L'APPLICATION ---
 
