@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Xrmbox.VoC.Portal.Services;
 using Xrmbox.VoC.Portal.Models.Local;
 using Xrmbox.VoC.Portal.Data;
+using System.Collections.Generic;
 
 namespace Xrmbox.VoC.Portal.Controllers
 {
@@ -22,9 +23,36 @@ namespace Xrmbox.VoC.Portal.Controllers
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
-        public IActionResult Index()
+        // GET: /Admin/Index
+        public async Task<IActionResult> Index()
         {
-            return View();
+            // Statistiques simples
+            var totalResponses = await _dbContext.LocalResponses.CountAsync();
+            var syncSuccess = await _dbContext.LocalResponses.CountAsync(r => r.IsSynced);
+            var syncErrors = await _dbContext.LocalResponses.CountAsync(r => !r.IsSynced);
+
+            ViewBag.TotalResponses = totalResponses;
+            ViewBag.SyncSuccess = syncSuccess;
+            ViewBag.SyncErrors = syncErrors;
+            ViewBag.ServiceStatus = "Online";
+
+            // Les 15 derniers logs d'intégration (général)
+            var logs = await _dbContext.IntegrationLogs
+                .OrderByDescending(l => l.EventDate)
+                .Take(15)
+                .ToListAsync();
+
+            // Logs spécifiques aux Power Automate Flows (nouvelle section)
+            var flowLogs = await _dbContext.IntegrationLogs
+                .Where(l => l.Action == "PowerAutomateFlow")
+                .OrderByDescending(l => l.EventDate)
+                .Take(10)
+                .ToListAsync();
+
+            ViewBag.FlowLogs = flowLogs;
+
+            // Le modèle de la vue est la liste des logs généraux
+            return View(logs);
         }
 
         [HttpPost]
@@ -34,7 +62,7 @@ namespace Xrmbox.VoC.Portal.Controllers
             if (campaignId == Guid.Empty)
             {
                 ModelState.AddModelError(string.Empty, "campaignId invalide.");
-                return View("Index");
+                return RedirectToAction("Index");
             }
 
             try
@@ -43,8 +71,8 @@ namespace Xrmbox.VoC.Portal.Controllers
 
                 if (!participants.Any())
                 {
-                    ViewData["SuccessMessage"] = "Aucun participant trouvé pour cette campagne.";
-                    return View("Index");
+                    TempData["SuccessMessage"] = "Aucun participant trouvé pour cette campagne.";
+                    return RedirectToAction("Index");
                 }
 
                 var sentCount = 0;
@@ -59,7 +87,6 @@ namespace Xrmbox.VoC.Portal.Controllers
                         Token = token,
                         ParticipantDataverseId = p.Id,
                         ExpirationDate = DateTime.Now.AddDays(7),
-                        //AddMinutes(2),
                         IsUsed = false
                     };
 
@@ -67,7 +94,6 @@ namespace Xrmbox.VoC.Portal.Controllers
                     await _dbContext.SaveChangesAsync();
 
                     var subject = "Votre avis nous intéresse";
-                    
                     var body = $"Please complete our survey by clicking here: https://localhost:7265/Survey/Fill?token={token}";
 
                     try
@@ -77,18 +103,36 @@ namespace Xrmbox.VoC.Portal.Controllers
                     }
                     catch (Exception emailEx)
                     {
-                        Console.WriteLine($"Erreur envoi email à {email} : {emailEx.Message}");
+                        // Ne bloque pas l'ensemble du traitement
+                        await _dbContext.IntegrationLogs.AddAsync(new IntegrationLog
+                        {
+                            EventDate = DateTime.UtcNow,
+                            EntityName = "SurveyInvitation",
+                            Action = "SendEmail",
+                            Status = "Error",
+                            Message = $"Erreur envoi email à {email}: {emailEx.Message}"
+                        });
+                        await _dbContext.SaveChangesAsync();
                     }
                 }
 
-                ViewData["SuccessMessage"] = $"Invitations traitées : {sentCount} emails envoyés.";
-                return View("Index");
+                TempData["SuccessMessage"] = $"Invitations traitées : {sentCount} emails envoyés.";
+                return RedirectToAction("Index");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Admin SendInvitations] Erreur: {ex.Message}");
-                ModelState.AddModelError(string.Empty, "Une erreur est survenue lors de l'envoi des invitations.");
-                return View("Index");
+                await _dbContext.IntegrationLogs.AddAsync(new IntegrationLog
+                {
+                    EventDate = DateTime.UtcNow,
+                    EntityName = "Admin.SendInvitations",
+                    Action = "Process",
+                    Status = "Error",
+                    Message = ex.ToString()
+                });
+                await _dbContext.SaveChangesAsync();
+
+                TempData["ErrorMessage"] = "Une erreur est survenue lors de l'envoi des invitations.";
+                return RedirectToAction("Index");
             }
         }
 
@@ -113,24 +157,26 @@ namespace Xrmbox.VoC.Portal.Controllers
                     return RedirectToAction("Index", "Home");
                 }
 
-                // 1. Récupérer l'ID du questionnaire via le service Dataverse
                 var surveyId = _dataverseService.GetSurveyContextInfo(invitation.ParticipantDataverseId);
-                // 2. DEBUG : Regarde ces logs dans ta console de sortie Visual Studio
-                Console.WriteLine($"--- DEBUG PFE ---");
-                Console.WriteLine($"Participant ID: {invitation.ParticipantDataverseId}");
-                Console.WriteLine($"Survey ID trouvé: {(surveyId.HasValue ? surveyId.Value.ToString() : "NULL")}");
-                Console.WriteLine($"-----------------");
-                // 2. Préparer les données pour la Vue
+
                 ViewBag.ParticipantDataverseId = invitation.ParticipantDataverseId;
                 ViewBag.Token = invitation.Token;
                 ViewBag.SurveyId = surveyId?.ToString() ?? string.Empty;
 
-                // 3. ICI : On force le chemin vers la vue qui contient SurveyJS
                 return View("~/Views/Survey/Index.cshtml");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Admin Fill] Erreur: {ex.Message}");
+                await _dbContext.IntegrationLogs.AddAsync(new IntegrationLog
+                {
+                    EventDate = DateTime.UtcNow,
+                    EntityName = "Admin.Fill",
+                    Action = "Open",
+                    Status = "Error",
+                    Message = ex.ToString()
+                });
+                await _dbContext.SaveChangesAsync();
+
                 TempData["ErrorMessage"] = "Une erreur est survenue lors du traitement du lien.";
                 return RedirectToAction("Index", "Home");
             }

@@ -1,33 +1,221 @@
-﻿@{
-    ViewData["Title"] = "Gestion des Invitations";
+﻿@model List<Xrmbox.VoC.Portal.Models.Local.IntegrationLog>
+
+@{
+    Layout = null;
+
+    // Cartes : lire depuis le ViewBag avec valeurs par défaut
+    var total = ViewBag.TotalResponses ?? 0;
+    var successCount = ViewBag.SyncSuccess ?? 0;
+    var errorsCount = ViewBag.SyncErrors ?? 0;
+    var svcStatus = ViewBag.ServiceStatus ?? "Unknown";
+
+    // Sécurité : éviter NullReferenceException
+    var modelList = Model ?? new List<Xrmbox.VoC.Portal.Models.Local.IntegrationLog>();
+
+    // Catégories propres (une seule déclaration par variable)
+    var dataverseLogs = modelList
+        .Where(l => !string.Equals(l.Action, "PowerAutomateFlow", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    var powerAutomateSuccess = modelList
+        .Where(l => string.Equals(l.Action, "PowerAutomateFlow", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(l.Status, "Success", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    var powerAutomateErrors = modelList
+        .Where(l => string.Equals(l.Action, "PowerAutomateFlow", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(l.Status, "Error", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    // Logs combinés d'erreur (Dataverse errors + Power Automate errors)
+    var dataverseErrors = dataverseLogs
+        .Where(l => string.Equals(l.Status, "Error", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    var combinedErrors = dataverseErrors
+        .Concat(powerAutomateErrors)
+        .OrderByDescending(l => l.EventDate)
+        .ToList();
+
+    // successLogs : historique des succès (tous les succès, triés décroissant)
+    var successLogs = modelList
+        .Where(l => string.Equals(l.Status, "Success", StringComparison.OrdinalIgnoreCase))
+        .OrderByDescending(l => l.EventDate)
+        .ToList();
+
+    // combinedLogs : flux d'activité principal (utilisé pour le tableau principal)
+    var combinedLogs = modelList
+        .OrderByDescending(l => l.EventDate)
+        .ToList();
 }
 
-<div class="container mt-4">
-    <h2>🚀 Envoyer les invitations aux participants</h2>
-    <hr />
-
-    @if (ViewData["SuccessMessage"] != null)
-    {
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            @ViewData["SuccessMessage"]
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard - Monitoring VoC</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" />
+    <link rel="stylesheet" href="~/css/site.css" />
+    <style>
+        .details .recentOrders table tr td:last-child {
+            max-width: 400px;
+            white-space: normal;
+            word-break: break-word;
+            font-size: 0.85rem;
+            color: #666;
+        }
+        .status.return { background: #f00; color: #fff; padding:2px 6px; border-radius:4px; }
+        .status.delivered { background: #8de02c; color:#fff; padding:2px 6px; border-radius:4px; }
+        .status.pending { background:#e9b10a; color:#fff; padding:2px 6px; border-radius:4px; }
+        .recentOrders, .recentCustomers { max-height: 600px; overflow-y: auto; }
+        .badge-automate { display:inline-block; background:#222; color:#fff; font-size:0.65rem; padding:2px 6px; border-radius:3px; margin-left:6px; vertical-align:middle; }
+        .entity-with-icon { display:flex; align-items:center; gap:6px; }
+        .entity-with-icon ion-icon { font-size:1rem; color:#2a2185; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="navigation">
+            <ul>
+                <li><a asp-controller="Home" asp-action="Index"><span class="icon"><ion-icon name="cloud-done-outline"></ion-icon></span><span class="title">VoC Portal</span></a></li>
+                <li class="hovered"><a asp-controller="Admin" asp-action="Index"><span class="icon"><ion-icon name="home-outline"></ion-icon></span><span class="title">Dashboard</span></a></li>
+                <li><a asp-controller="Admin" asp-action="Index"><span class="icon"><ion-icon name="mail-outline"></ion-icon></span><span class="title">Invitations</span></a></li>
+                <li><a asp-controller="Home" asp-action="Privacy"><span class="icon"><ion-icon name="alert-circle-outline"></ion-icon></span><span class="title">Logs</span></a></li>
+            </ul>
         </div>
-    }
 
-    <div class="card shadow-sm">
-        <div class="card-body">
-            <form asp-action="SendInvitations" method="post">
-                <div class="form-group mb-3">
-                    <label class="form-label fw-bold">ID de la Campagne (GUID Dataverse) :</label>
-                    <input type="text" name="campaignId" class="form-control"
-                           placeholder="Ex: 8a7b6c5d-e4f3-a2b1-c0d9-e8f7a6b5c4d3" required />
-                    <small class="text-muted">Copiez l'ID depuis l'URL de votre campagne dans PowerApps.</small>
+        <div class="main">
+            <div class="topbar">
+                <div class="toggle"><ion-icon name="menu-outline"></ion-icon></div>
+                <div class="search"><label><input type="text" placeholder="Search logs..."><ion-icon name="search-outline"></ion-icon></label></div>
+                <div class="user"><img src="https://ui-avatars.com/api/?name=Ahmed+Ben+Hmida&background=2a2185&color=fff" alt="user" /></div>
+            </div>
+
+            <div class="cardBox">
+                <div class="card">
+                    <div><div class="numbers">@total</div><div class="cardName">Total Réponses</div></div>
+                    <div class="iconBx"><ion-icon name="chatbubbles-outline"></ion-icon></div>
                 </div>
 
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-send"></i> Lancer l'envoi des emails
-                </button>
-            </form>
+                <div class="card">
+                    <div><div class="numbers">@successCount</div><div class="cardName">Synchro Success</div></div>
+                    <div class="iconBx"><ion-icon name="checkmark-circle-outline"></ion-icon></div>
+                </div>
+
+                <div class="card">
+                    <div><div class="numbers">@errorsCount</div><div class="cardName">Synchro Errors</div></div>
+                    <div class="iconBx"><ion-icon name="bug-outline"></ion-icon></div>
+                </div>
+
+                <div class="card">
+                    <div><div class="numbers" style="font-size:1.2rem;">@svcStatus</div><div class="cardName">État Services</div></div>
+                    <div class="iconBx"><ion-icon name="server-outline"></ion-icon></div>
+                </div>
+            </div>
+
+            <div class="details">
+                <div class="recentOrders">
+                    <div class="cardHeader">
+                        <h2>Flux d'activité (Integration Logs)</h2>
+                        <a asp-controller="Admin" asp-action="Index" class="btn">Rafraîchir</a>
+                    </div>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <td>Date</td>
+                                <td>Entité</td>
+                                <td>Action</td>
+                                <td>Status</td>
+                                <td>Message</td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!combinedLogs.Any())
+                            {
+                                <tr><td colspan="5" style="text-align:center;">Aucun log disponible.</td></tr>
+                            }
+                            else
+                            {
+                                foreach (var log in combinedLogs)
+                                {
+                                    var badgeClass = string.Equals(log.Status, "Success", StringComparison.OrdinalIgnoreCase) ? "status delivered"
+                                                    : string.Equals(log.Status, "Error", StringComparison.OrdinalIgnoreCase) ? "status return"
+                                                    : "status pending";
+                                    <tr>
+                                        <td>@log.EventDate.ToString("g")</td>
+                                        <td>
+                                            @{ var isAutomate = string.Equals(log.Action, "PowerAutomateFlow", StringComparison.OrdinalIgnoreCase); }
+                                            <div class="entity-with-icon">
+                                                @if (isAutomate) { <ion-icon name="cloud-outline"></ion-icon> }
+                                                <span>@log.EntityName</span>
+                                                @if (isAutomate) { <span class="badge-automate">AUTOMATE</span> }
+                                            </div>
+                                        </td>
+                                        <td>@log.Action</td>
+                                        <td><span class="@badgeClass">@log.Status</span></td>
+                                        <td style="max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="@log.Message">@log.Message</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="recentCustomers">
+                    <div class="cardHeader"><h2>Historique des Succès</h2></div>
+                    <table>
+                        <thead><tr><td>Date</td><td>Détails</td></tr></thead>
+                        <tbody>
+                            @if (!successLogs.Any())
+                            {
+                                <tr><td colspan="2" style="text-align:center;">Aucune synchronisation réussie.</td></tr>
+                            }
+                            else
+                            {
+                                foreach (var log in successLogs)
+                                {
+                                    <tr>
+                                        <td>@log.EventDate.ToString("dd/MM HH:mm")</td>
+                                        <td>
+                                            <span class="status delivered" style="padding:2px 10px; font-size:0.7rem;">@log.EntityName</span><br />
+                                            <small>@log.Action : Terminé avec succès</small>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
-</div>
+
+    <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+
+    <script>
+        // Menu Toggle
+        let toggle = document.querySelector(".toggle");
+        let navigation = document.querySelector(".navigation");
+        let main = document.querySelector(".main");
+
+        if (toggle && navigation && main) {
+            toggle.onclick = function () {
+                navigation.classList.toggle("active");
+                main.classList.toggle("active");
+            };
+        }
+
+        // Hovered effect
+        let list = document.querySelectorAll(".navigation li");
+        function activeLink() {
+            list.forEach((item) => item.classList.remove("hovered"));
+            this.classList.add("hovered");
+        }
+        list.forEach((item) => item.addEventListener("mouseover", activeLink));
+    </script>
+</body>
+</html>

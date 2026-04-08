@@ -136,9 +136,7 @@ namespace Xrmbox.VoC.Portal.Controllers
                                 var bodyTemplate = campaign.InvitationBody ?? $"Bonjour,<br/><br/>Merci de compléter notre sondage : [SurveyLink]<br/><br/>Cordialement.";
 
                                 // Remplacements simples de tags
-                                // Remplacements simples de tags
-                                // On utilise d'abord ClientName, sinon l'Email
-                                var participantName = !string.IsNullOrEmpty(p.ClientName) ? p.ClientName : (p.Email ?? string.Empty); // fallback si nom indisponible
+                                var participantName = !string.IsNullOrEmpty(p.ClientName) ? p.ClientName : (p.Email ?? string.Empty);
                                 var campaignName = campaign.Name ?? string.Empty;
                                 var link = $"https://localhost:7265/Survey/Fill?token={invitation.Token}";
 
@@ -177,6 +175,36 @@ namespace Xrmbox.VoC.Portal.Controllers
             }
 
             return Ok();
+        }
+
+        // Nouveau endpoint indépendant pour journaliser l'exécution d'un Power Automate Flow
+        [HttpPost("flow-log")]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> FlowLog([FromBody] FlowLogDto flow)
+        {
+            if (flow == null)
+            {
+                await TryAddLogAsync("LogFlowExecution", "Error", "Payload null", null);
+                return BadRequest();
+            }
+
+            try
+            {
+                // Utiliser TryAddLogAsync pour centraliser l'écriture
+                await TryAddLogAsync(
+                    action: "PowerAutomateFlow",
+                    status: flow.Status ?? string.Empty,
+                    message: flow.ErrorMessage ?? string.Empty,
+                    entityName: flow.FlowName ?? string.Empty
+                );
+
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                await TryAddLogAsync("LogFlowExecution", "Error", ex.ToString(), flow?.FlowName);
+                return StatusCode(500);
+            }
         }
 
         private async Task TryAddLogAsync(string action, string status, string message, string? entityName)
@@ -227,6 +255,14 @@ namespace Xrmbox.VoC.Portal.Controllers
             public string? Email { get; set; }
             public int StatusCode { get; set; }
             public string? ClientName { get; set; }
+        }
+
+        // DTO demandé pour l'endpoint flow-log
+        public class FlowLogDto
+        {
+            public string? FlowName { get; set; }
+            public string? Status { get; set; }
+            public string? ErrorMessage { get; set; }
         }
     }
 }
