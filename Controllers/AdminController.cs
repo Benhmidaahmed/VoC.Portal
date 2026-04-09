@@ -26,27 +26,48 @@ namespace Xrmbox.VoC.Portal.Controllers
         // GET: /Admin/Index
         public async Task<IActionResult> Index()
         {
-            // 1. Statistiques pour les compteurs (CardBox)
+            // 1. Statistiques pour les compteurs
             var totalResponses = await _dbContext.LocalResponses.CountAsync();
             var syncSuccess = await _dbContext.LocalResponses.CountAsync(r => r.IsSynced);
-            var syncErrors = await _dbContext.IntegrationLogs.CountAsync(l => l.Status == "Error");
+            // On compte les erreurs dans LocalResponses
+            var syncErrorsResponse = await _dbContext.LocalResponses.CountAsync(r => !r.IsSynced && r.SyncError != null);
+            // Total des erreurs (Logs système + Réponses échouées)
+            var syncErrors = await _dbContext.IntegrationLogs.CountAsync(l => l.Status == "Error") + syncErrorsResponse;
 
             ViewBag.TotalResponses = totalResponses;
             ViewBag.SyncSuccess = syncSuccess;
             ViewBag.SyncErrors = syncErrors;
             ViewBag.ServiceStatus = "Online";
 
-            // 2. Récupération des logs pour le flux d'activité et l'historique
-            // On prend les 50 derniers pour avoir assez de données pour les deux colonnes (Erreurs et Succès)
-            var allRecentLogs = await _dbContext.IntegrationLogs
+            // 2. Récupération des logs système
+            var systemLogs = await _dbContext.IntegrationLogs
                 .AsNoTracking()
                 .OrderByDescending(l => l.EventDate)
                 .Take(50)
                 .ToListAsync();
 
-            // 3. On envoie la liste complète au Model de la vue
-            // La vue se chargera de filtrer 'successLogs' et 'combinedLogs' à partir de ce Model
-            return View(allRecentLogs);
+            // 3. Transformation des LocalResponses en "Logs virtuels" pour l'affichage
+            var responseLogs = await _dbContext.LocalResponses
+                .AsNoTracking()
+                .Where(r => r.IsSynced || r.SyncError != null) // On prend les succès et les erreurs réelles
+                .OrderByDescending(r => r.SubmittedAt)
+                .Take(50)
+                .Select(r => new IntegrationLog
+                {
+                    EventDate = r.SubmittedAt,
+                    EntityName = "Response", // IMPORTANT: Pour ton filtre resolveType dans la vue
+                    Action = "Synchronisation Dataverse",
+                    Status = r.IsSynced ? "Success" : "Error",
+                    Message = r.IsSynced ? "Données synchronisées avec succès" : r.SyncError
+                })
+                .ToListAsync();
+
+            // 4. Fusion des deux listes et tri chronologique global
+            var combinedLogs = systemLogs.Concat(responseLogs)
+                .OrderByDescending(l => l.EventDate)
+                .ToList();
+
+            return View(combinedLogs);
         }
 
         [HttpPost]
