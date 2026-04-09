@@ -26,33 +26,27 @@ namespace Xrmbox.VoC.Portal.Controllers
         // GET: /Admin/Index
         public async Task<IActionResult> Index()
         {
-            // Statistiques simples
+            // 1. Statistiques pour les compteurs (CardBox)
             var totalResponses = await _dbContext.LocalResponses.CountAsync();
             var syncSuccess = await _dbContext.LocalResponses.CountAsync(r => r.IsSynced);
-            var syncErrors = await _dbContext.LocalResponses.CountAsync(r => !r.IsSynced);
+            var syncErrors = await _dbContext.IntegrationLogs.CountAsync(l => l.Status == "Error");
 
             ViewBag.TotalResponses = totalResponses;
             ViewBag.SyncSuccess = syncSuccess;
             ViewBag.SyncErrors = syncErrors;
             ViewBag.ServiceStatus = "Online";
 
-            // Les 15 derniers logs d'intégration (général)
-            var logs = await _dbContext.IntegrationLogs
+            // 2. Récupération des logs pour le flux d'activité et l'historique
+            // On prend les 50 derniers pour avoir assez de données pour les deux colonnes (Erreurs et Succès)
+            var allRecentLogs = await _dbContext.IntegrationLogs
+                .AsNoTracking()
                 .OrderByDescending(l => l.EventDate)
-                .Take(15)
+                .Take(50)
                 .ToListAsync();
 
-            // Logs spécifiques aux Power Automate Flows (nouvelle section)
-            var flowLogs = await _dbContext.IntegrationLogs
-                .Where(l => l.Action == "PowerAutomateFlow")
-                .OrderByDescending(l => l.EventDate)
-                .Take(10)
-                .ToListAsync();
-
-            ViewBag.FlowLogs = flowLogs;
-
-            // Le modèle de la vue est la liste des logs généraux
-            return View(logs);
+            // 3. On envoie la liste complète au Model de la vue
+            // La vue se chargera de filtrer 'successLogs' et 'combinedLogs' à partir de ce Model
+            return View(allRecentLogs);
         }
 
         [HttpPost]
@@ -100,20 +94,29 @@ namespace Xrmbox.VoC.Portal.Controllers
                     {
                         await _emailService.SendEmailAsync(email, subject, body);
                         sentCount++;
-                    }
-                    catch (Exception emailEx)
-                    {
-                        // Ne bloque pas l'ensemble du traitement
+
+                        // Log de succès optionnel
                         await _dbContext.IntegrationLogs.AddAsync(new IntegrationLog
                         {
                             EventDate = DateTime.UtcNow,
-                            EntityName = "SurveyInvitation",
+                            EntityName = "Invitation",
+                            Action = "EmailSent",
+                            Status = "Success",
+                            Message = $"Email envoyé avec succès à {email}"
+                        });
+                    }
+                    catch (Exception emailEx)
+                    {
+                        await _dbContext.IntegrationLogs.AddAsync(new IntegrationLog
+                        {
+                            EventDate = DateTime.UtcNow,
+                            EntityName = "Invitation",
                             Action = "SendEmail",
                             Status = "Error",
                             Message = $"Erreur envoi email à {email}: {emailEx.Message}"
                         });
-                        await _dbContext.SaveChangesAsync();
                     }
+                    await _dbContext.SaveChangesAsync();
                 }
 
                 TempData["SuccessMessage"] = $"Invitations traitées : {sentCount} emails envoyés.";
@@ -127,7 +130,7 @@ namespace Xrmbox.VoC.Portal.Controllers
                     EntityName = "Admin.SendInvitations",
                     Action = "Process",
                     Status = "Error",
-                    Message = ex.ToString()
+                    Message = ex.Message
                 });
                 await _dbContext.SaveChangesAsync();
 
@@ -173,7 +176,7 @@ namespace Xrmbox.VoC.Portal.Controllers
                     EntityName = "Admin.Fill",
                     Action = "Open",
                     Status = "Error",
-                    Message = ex.ToString()
+                    Message = ex.Message
                 });
                 await _dbContext.SaveChangesAsync();
 

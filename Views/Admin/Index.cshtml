@@ -1,221 +1,702 @@
 ﻿@model List<Xrmbox.VoC.Portal.Models.Local.IntegrationLog>
 
 @{
+
     Layout = null;
 
-    // Cartes : lire depuis le ViewBag avec valeurs par défaut
+
+
     var total = ViewBag.TotalResponses ?? 0;
+
     var successCount = ViewBag.SyncSuccess ?? 0;
+
     var errorsCount = ViewBag.SyncErrors ?? 0;
+
     var svcStatus = ViewBag.ServiceStatus ?? "Unknown";
 
-    // Sécurité : éviter NullReferenceException
-    var modelList = Model ?? new List<Xrmbox.VoC.Portal.Models.Local.IntegrationLog>();
 
-    // Catégories propres (une seule déclaration par variable)
-    var dataverseLogs = modelList
-        .Where(l => !string.Equals(l.Action, "PowerAutomateFlow", StringComparison.OrdinalIgnoreCase))
-        .ToList();
 
-    var powerAutomateSuccess = modelList
-        .Where(l => string.Equals(l.Action, "PowerAutomateFlow", StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(l.Status, "Success", StringComparison.OrdinalIgnoreCase))
-        .ToList();
+        var modelList = Model ?? new List<Xrmbox.VoC.Portal.Models.Local.IntegrationLog>();
 
-    var powerAutomateErrors = modelList
-        .Where(l => string.Equals(l.Action, "PowerAutomateFlow", StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(l.Status, "Error", StringComparison.OrdinalIgnoreCase))
-        .ToList();
 
-    // Logs combinés d'erreur (Dataverse errors + Power Automate errors)
-    var dataverseErrors = dataverseLogs
-        .Where(l => string.Equals(l.Status, "Error", StringComparison.OrdinalIgnoreCase))
-        .ToList();
 
-    var combinedErrors = dataverseErrors
-        .Concat(powerAutomateErrors)
-        .OrderByDescending(l => l.EventDate)
-        .ToList();
+        // Résolution du type pour le filtrage
 
-    // successLogs : historique des succès (tous les succès, triés décroissant)
-    var successLogs = modelList
-        .Where(l => string.Equals(l.Status, "Success", StringComparison.OrdinalIgnoreCase))
-        .OrderByDescending(l => l.EventDate)
-        .ToList();
+        Func<Xrmbox.VoC.Portal.Models.Local.IntegrationLog, string> resolveType = log =>
 
-    // combinedLogs : flux d'activité principal (utilisé pour le tableau principal)
-    var combinedLogs = modelList
-        .OrderByDescending(l => l.EventDate)
-        .ToList();
-}
+        {
 
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard - Monitoring VoC</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" />
-    <link rel="stylesheet" href="~/css/site.css" />
-    <style>
-        .details .recentOrders table tr td:last-child {
-            max-width: 400px;
-            white-space: normal;
-            word-break: break-word;
-            font-size: 0.85rem;
-            color: #666;
-        }
-        .status.return { background: #f00; color: #fff; padding:2px 6px; border-radius:4px; }
-        .status.delivered { background: #8de02c; color:#fff; padding:2px 6px; border-radius:4px; }
-        .status.pending { background:#e9b10a; color:#fff; padding:2px 6px; border-radius:4px; }
-        .recentOrders, .recentCustomers { max-height: 600px; overflow-y: auto; }
-        .badge-automate { display:inline-block; background:#222; color:#fff; font-size:0.65rem; padding:2px 6px; border-radius:3px; margin-left:6px; vertical-align:middle; }
-        .entity-with-icon { display:flex; align-items:center; gap:6px; }
-        .entity-with-icon ion-icon { font-size:1rem; color:#2a2185; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="navigation">
-            <ul>
-                <li><a asp-controller="Home" asp-action="Index"><span class="icon"><ion-icon name="cloud-done-outline"></ion-icon></span><span class="title">VoC Portal</span></a></li>
-                <li class="hovered"><a asp-controller="Admin" asp-action="Index"><span class="icon"><ion-icon name="home-outline"></ion-icon></span><span class="title">Dashboard</span></a></li>
-                <li><a asp-controller="Admin" asp-action="Index"><span class="icon"><ion-icon name="mail-outline"></ion-icon></span><span class="title">Invitations</span></a></li>
-                <li><a asp-controller="Home" asp-action="Privacy"><span class="icon"><ion-icon name="alert-circle-outline"></ion-icon></span><span class="title">Logs</span></a></li>
-            </ul>
-        </div>
+            var name = (log.EntityName ?? string.Empty).ToLowerInvariant();
 
-        <div class="main">
-            <div class="topbar">
-                <div class="toggle"><ion-icon name="menu-outline"></ion-icon></div>
-                <div class="search"><label><input type="text" placeholder="Search logs..."><ion-icon name="search-outline"></ion-icon></label></div>
-                <div class="user"><img src="https://ui-avatars.com/api/?name=Ahmed+Ben+Hmida&background=2a2185&color=fff" alt="user" /></div>
+
+
+            if (name.Contains("invitation")) return "Invitations";
+
+            if (name.Contains("reponse") || name.Contains("response")) return "Réponses";
+
+            if (name.Contains("campagne") || name.Contains("campaign")) return "Campagnes";
+
+
+
+            return "Autres";
+
+        };
+
+
+
+        // Logs succès uniquement (colonne droite)
+
+        var         successLogs = modelList
+
+            .Where(l => string.Equals(l.Status, "Success", StringComparison.OrdinalIgnoreCase))
+
+            .OrderByDescending(l => l.EventDate)
+
+            .ToList();
+
+
+
+        // Flux d'activité : uniquement les erreurs
+
+        var combinedLogs = modelList
+
+            .Where(l => string.Equals(l.Status, "Error", StringComparison.OrdinalIgnoreCase))
+
+            .OrderByDescending(l => l.EventDate)
+
+            .ToList();
+
+    }
+
+
+
+    <!DOCTYPE html>
+
+    <html lang="fr">
+
+    <head>
+
+        <meta charset="UTF-8" />
+
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+        <title>Dashboard - Monitoring VoC</title>
+
+
+
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" />
+
+        <link rel="stylesheet" href="~/css/site.css" />
+
+
+
+        <style>
+
+            /* Navigation premium */
+
+            .navigation {
+                position: fixed;
+                width: 300px;
+                height: 100%;
+                background: #1f1a6e;
+                border-left: 10px solid #1f1a6e;
+                transition: 0.5s;
+                overflow: hidden;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+            }
+
+
+
+                .navigation.active {
+                    width: 80px;
+                }
+
+
+
+                .navigation ul {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                }
+
+
+
+                    .navigation ul li {
+                        position: relative;
+                        width: 100%;
+                        list-style: none;
+                        border-top-left-radius: 30px;
+                        border-bottom-left-radius: 30px;
+                        transition: background-color 0.2s ease;
+                    }
+
+
+
+                        .navigation ul li:hover,
+                        .navigation ul li.active {
+                            background-color: #fff;
+                        }
+
+
+
+                        .navigation ul li a {
+                            position: relative;
+                            display: flex;
+                            align-items: center;
+                            gap: 12px;
+                            width: 100%;
+                            text-decoration: none;
+                            color: #fff;
+                            padding: 8px 10px;
+                            transition: color 0.2s ease, transform 0.2s ease;
+                        }
+
+
+
+                        .navigation ul li:hover a,
+                        .navigation ul li.active a {
+                            color: #1f1a6e;
+                            transform: translateX(6px);
+                        }
+
+
+
+                        .navigation ul li a .icon {
+                            min-width: 56px;
+                            height: 56px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+
+
+
+                            .navigation ul li a .icon ion-icon {
+                                font-size: 1.6rem;
+                            }
+
+
+
+                        .navigation ul li a .title {
+                            font-size: 1rem;
+                            font-weight: 600;
+                            white-space: nowrap;
+                        }
+
+
+
+                        /* Curved active link (effet arrondi) */
+
+                        .navigation ul li:hover a::before,
+                        .navigation ul li.active a::before {
+                            content: "";
+                            position: absolute;
+                            right: 0;
+                            top: -50px;
+                            width: 50px;
+                            height: 50px;
+                            background: transparent;
+                            border-radius: 50%;
+                            box-shadow: 35px 35px 0 10px #fff;
+                            pointer-events: none;
+                        }
+
+
+
+                        .navigation ul li.hovered a::before {
+                            top: -65px;
+                        }
+
+                        .navigation ul li:hover a::after,
+                        .navigation ul li.active a::after {
+                            content: "";
+                            position: absolute;
+                            right: 0;
+                            bottom: -50px;
+                            width: 50px;
+                            height: 50px;
+                            background: transparent;
+                            border-radius: 50%;
+                            box-shadow: 35px -35px 0 10px #fff;
+                            pointer-events: none;
+                        }
+
+
+
+            /* Tables */
+
+            .details .recentOrders table tr td:last-child {
+                max-width: 400px;
+                white-space: normal;
+                word-break: break-word;
+                font-size: 0.9rem;
+                color: #c0392b;
+                font-weight: 600;
+            }
+
+
+
+            .status.return {
+                background: #e74c3c;
+                color: #fff;
+                padding: 2px 6px;
+                border-radius: 4px;
+            }
+
+            .status.delivered {
+                background: #27ae60;
+                color: #fff;
+                padding: 2px 6px;
+                border-radius: 4px;
+            }
+
+            .status.pending {
+                background: #f39c12;
+                color: #fff;
+                padding: 2px 6px;
+                border-radius: 4px;
+            }
+
+            .recentOrders, .recentCustomers {
+                max-height: 600px;
+                overflow-y: auto;
+            }
+
+
+
+            .badge-automate {
+                display: inline-block;
+                background: #222;
+                color: #fff;
+                font-size: 0.65rem;
+                padding: 2px 6px;
+                border-radius: 3px;
+                margin-left: 6px;
+                vertical-align: middle;
+            }
+
+
+
+            .entity-with-icon {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+                .entity-with-icon ion-icon {
+                    font-size: 1rem;
+                    color: #1f1a6e;
+                }
+
+
+
+            .filter-hidden {
+                display: none;
+            }
+
+        </style>
+
+    </head>
+
+    <body>
+
+        <div class="container">
+
+            <div class="navigation">
+
+                <ul>
+
+                    <li class="active">
+
+                        <a href="#" data-type="All">
+
+                            <span class="icon"><ion-icon name="cloud-done-outline"></ion-icon></span>
+
+                            <span class="title">Dashboard</span>
+
+                        </a>
+
+                    </li>
+
+                    <li>
+
+                        <a href="#" data-type="Invitations">
+
+                            <span class="icon"><ion-icon name="mail-outline"></ion-icon></span>
+
+                            <span class="title">Invitations</span>
+
+                        </a>
+
+                    </li>
+
+                    <li>
+
+                        <a href="#" data-type="Réponses">
+
+                            <span class="icon"><ion-icon name="chatbubbles-outline"></ion-icon></span>
+
+                            <span class="title">Réponses</span>
+
+                        </a>
+
+                    </li>
+
+                    <li>
+
+                        <a href="#" data-type="Campagnes">
+
+                            <span class="icon"><ion-icon name="folder-outline"></ion-icon></span>
+
+                            <span class="title">Campagnes</span>
+
+                        </a>
+
+                    </li>
+
+                </ul>
+
             </div>
 
-            <div class="cardBox">
-                <div class="card">
-                    <div><div class="numbers">@total</div><div class="cardName">Total Réponses</div></div>
-                    <div class="iconBx"><ion-icon name="chatbubbles-outline"></ion-icon></div>
+
+
+            <div class="main">
+
+                <div class="topbar">
+
+                    <div class="toggle"><ion-icon name="menu-outline"></ion-icon></div>
+
+                    <div class="search"><label><input type="text" placeholder="Search logs..." /><ion-icon name="search-outline"></ion-icon></label></div>
+
+                    <div class="user"><img src="https://ui-avatars.com/api/?name=Ahmed+Ben+Hmida&background=2a2185&color=fff" alt="user" /></div>
+
                 </div>
 
-                <div class="card">
-                    <div><div class="numbers">@successCount</div><div class="cardName">Synchro Success</div></div>
-                    <div class="iconBx"><ion-icon name="checkmark-circle-outline"></ion-icon></div>
-                </div>
 
-                <div class="card">
-                    <div><div class="numbers">@errorsCount</div><div class="cardName">Synchro Errors</div></div>
-                    <div class="iconBx"><ion-icon name="bug-outline"></ion-icon></div>
-                </div>
 
-                <div class="card">
-                    <div><div class="numbers" style="font-size:1.2rem;">@svcStatus</div><div class="cardName">État Services</div></div>
-                    <div class="iconBx"><ion-icon name="server-outline"></ion-icon></div>
-                </div>
-            </div>
+                <div class="cardBox">
 
-            <div class="details">
-                <div class="recentOrders">
-                    <div class="cardHeader">
-                        <h2>Flux d'activité (Integration Logs)</h2>
-                        <a asp-controller="Admin" asp-action="Index" class="btn">Rafraîchir</a>
+                    <div class="card">
+
+                        <div><div class="numbers">@total</div><div class="cardName">Total Réponses</div></div>
+
+                        <div class="iconBx"><ion-icon name="chatbubbles-outline"></ion-icon></div>
+
                     </div>
 
-                    <table>
-                        <thead>
-                            <tr>
-                                <td>Date</td>
-                                <td>Entité</td>
-                                <td>Action</td>
-                                <td>Status</td>
-                                <td>Message</td>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (!combinedLogs.Any())
-                            {
-                                <tr><td colspan="5" style="text-align:center;">Aucun log disponible.</td></tr>
-                            }
-                            else
-                            {
-                                foreach (var log in combinedLogs)
-                                {
-                                    var badgeClass = string.Equals(log.Status, "Success", StringComparison.OrdinalIgnoreCase) ? "status delivered"
-                                                    : string.Equals(log.Status, "Error", StringComparison.OrdinalIgnoreCase) ? "status return"
-                                                    : "status pending";
-                                    <tr>
-                                        <td>@log.EventDate.ToString("g")</td>
-                                        <td>
-                                            @{ var isAutomate = string.Equals(log.Action, "PowerAutomateFlow", StringComparison.OrdinalIgnoreCase); }
-                                            <div class="entity-with-icon">
-                                                @if (isAutomate) { <ion-icon name="cloud-outline"></ion-icon> }
-                                                <span>@log.EntityName</span>
-                                                @if (isAutomate) { <span class="badge-automate">AUTOMATE</span> }
-                                            </div>
-                                        </td>
-                                        <td>@log.Action</td>
-                                        <td><span class="@badgeClass">@log.Status</span></td>
-                                        <td style="max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="@log.Message">@log.Message</td>
-                                    </tr>
-                                }
-                            }
-                        </tbody>
-                    </table>
+
+
+                    <div class="card">
+
+                        <div><div class="numbers">@successCount</div><div class="cardName">Synchro Success</div></div>
+
+                        <div class="iconBx"><ion-icon name="checkmark-circle-outline"></ion-icon></div>
+
+                    </div>
+
+
+
+                    <div class="card">
+
+                        <div><div class="numbers">@errorsCount</div><div class="cardName">Synchro Errors</div></div>
+
+                        <div class="iconBx"><ion-icon name="bug-outline"></ion-icon></div>
+
+                    </div>
+
+
+
+                    <div class="card">
+
+                        <div><div class="numbers" style="font-size:1.2rem;">@svcStatus</div><div class="cardName">État Services</div></div>
+
+                        <div class="iconBx"><ion-icon name="server-outline"></ion-icon></div>
+
+                    </div>
+
                 </div>
 
-                <div class="recentCustomers">
-                    <div class="cardHeader"><h2>Historique des Succès</h2></div>
-                    <table>
-                        <thead><tr><td>Date</td><td>Détails</td></tr></thead>
-                        <tbody>
-                            @if (!successLogs.Any())
-                            {
-                                <tr><td colspan="2" style="text-align:center;">Aucune synchronisation réussie.</td></tr>
-                            }
-                            else
-                            {
-                                foreach (var log in successLogs)
+
+
+                <div class="details">
+
+                    <div class="recentOrders">
+
+                        <div class="cardHeader">
+
+                            <h2>Flux d'activité (Integration Logs)</h2>
+
+                            <a asp-controller="Admin" asp-action="Index" class="btn">Rafraîchir</a>
+
+                        </div>
+
+
+
+                        <table>
+
+                            <thead>
+
+                                <tr>
+
+                                    <td>Date</td>
+
+                                    <td>Entité</td>
+
+                                    <td>Action</td>
+
+                                    <td>Status</td>
+
+                                    <td>Message</td>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                @if (Model == null || !combinedLogs.Any())
+
                                 {
-                                    <tr>
-                                        <td>@log.EventDate.ToString("dd/MM HH:mm")</td>
-                                        <td>
-                                            <span class="status delivered" style="padding:2px 10px; font-size:0.7rem;">@log.EntityName</span><br />
-                                            <small>@log.Action : Terminé avec succès</small>
-                                        </td>
-                                    </tr>
+
+                                    <tr><td colspan="5" style="text-align:center;">Aucun log d'erreur disponible.</td></tr>
+
                                 }
-                            }
-                        </tbody>
-                    </table>
+
+                                else
+
+                                {
+
+                                    foreach (var log in combinedLogs)
+
+                                    {
+
+                                        var badgeClass = "status return";
+
+                                        var isAutomate = string.Equals(log.Action, "PowerAutomateFlow", StringComparison.OrdinalIgnoreCase);
+
+                                        var filterType = resolveType(log);
+
+                                        var entityClass = "filter-item " + (log.EntityName ?? string.Empty).Replace(" ", "-");
+
+
+
+                                        var errorMessageProp = log.GetType().GetProperty("ErrorMessage");
+
+                                        var errorMessageAlt = errorMessageProp?.GetValue(log)?.ToString();
+
+                                        var displayMessage = !string.IsNullOrEmpty(log.Message)
+
+                                        ? log.Message
+
+                                        : (!string.IsNullOrEmpty(errorMessageAlt) ? errorMessageAlt : "Erreur technique (vérifier Power Automate)");
+
+
+
+                                        <tr class="@entityClass" data-type="@filterType">
+
+                                            <td>@log.EventDate.ToString("g")</td>
+
+                                            <td>
+
+                                                <div class="entity-with-icon">
+
+                                                    @if (isAutomate)
+                                                    {
+                                                        <ion-icon name="cloud-outline"></ion-icon>
+                                                    }
+
+                                                    <span>@log.EntityName</span>
+
+                                                    @if (isAutomate)
+                                                    {
+                                                        <span class="badge-automate">AUTOMATE</span>
+                                                    }
+
+                                                </div>
+
+                                            </td>
+
+                                            <td>@log.Action</td>
+
+                                            <td><span class="@badgeClass">@log.Status</span></td>
+
+                                            <td title="@displayMessage">@displayMessage</td>
+
+                                        </tr>
+
+                                    }
+
+                                }
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+
+
+                    <div class="recentCustomers">
+
+                        <div class="cardHeader"><h2>Historique des Succès</h2></div>
+
+                        <table>
+
+                            <thead><tr><td>Date</td><td>Détails</td></tr></thead>
+
+                            <tbody>
+
+                                @if (Model == null || !successLogs.Any())
+
+                                {
+
+                                    <tr><td colspan="2" style="text-align:center;">Aucune synchronisation réussie.</td></tr>
+
+                                }
+
+                                else
+
+                                {
+
+                                    foreach (var log in successLogs)
+
+                                    {
+
+                                        var filterType = resolveType(log);
+
+                                        var entityClass = "filter-item " + (log.EntityName ?? string.Empty).Replace(" ", "-");
+
+
+
+                                        <tr class="@entityClass" data-type="@filterType">
+
+                                            <td>@log.EventDate.ToString("dd/MM HH:mm")</td>
+
+                                            <td>
+
+                                                <span class="status delivered" style="padding:2px 10px; font-size:0.7rem;">@log.EntityName</span><br />
+
+                                                <small>@log.Action : Terminé avec succès</small>
+
+                                            </td>
+
+                                        </tr>
+
+                                    }
+
+                                }
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
                 </div>
+
             </div>
+
         </div>
-    </div>
 
-    <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
-    <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
 
-    <script>
-        // Menu Toggle
-        let toggle = document.querySelector(".toggle");
-        let navigation = document.querySelector(".navigation");
-        let main = document.querySelector(".main");
 
-        if (toggle && navigation && main) {
-            toggle.onclick = function () {
-                navigation.classList.toggle("active");
-                main.classList.toggle("active");
-            };
-        }
+        <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
 
-        // Hovered effect
-        let list = document.querySelectorAll(".navigation li");
-        function activeLink() {
-            list.forEach((item) => item.classList.remove("hovered"));
-            this.classList.add("hovered");
-        }
-        list.forEach((item) => item.addEventListener("mouseover", activeLink));
-    </script>
-</body>
-</html>
+        <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+
+
+
+        <script>
+
+            // Menu Toggle
+
+            let toggle = document.querySelector(".toggle");
+
+            let navigation = document.querySelector(".navigation");
+
+            let main = document.querySelector(".main");
+
+
+
+            if (toggle && navigation && main) {
+
+                toggle.onclick = function () {
+
+                    navigation.classList.toggle("active");
+
+                    main.classList.toggle("active");
+
+                };
+
+            }
+
+
+
+            // Hovered + filter behavior
+
+            const navLinks = document.querySelectorAll(".navigation a[data-type]");
+
+            const rows = document.querySelectorAll("tr.filter-item");
+
+
+
+            navLinks.forEach(link => {
+
+                link.addEventListener("click", (e) => {
+
+                    e.preventDefault();
+
+
+
+                    navLinks.forEach(l => l.parentElement.classList.remove("active"));
+
+                    link.parentElement.classList.add("active");
+
+
+
+                    const type = link.getAttribute("data-type");
+
+                    rows.forEach(row => {
+
+                        const rowType = row.getAttribute("data-type");
+
+                        if (type === "All" || rowType === type) {
+
+                            row.classList.remove("filter-hidden");
+
+                        } else {
+
+                            row.classList.add("filter-hidden");
+
+                        }
+
+                    });
+
+                });
+
+            });
+
+
+
+            // Hovered effect
+
+            let list = document.querySelectorAll(".navigation li");
+
+            function activeLink() {
+
+                list.forEach((item) => item.classList.remove("hovered"));
+
+                this.classList.add("hovered");
+
+            }
+
+            list.forEach((item) => item.addEventListener("mouseover", activeLink));
+
+        </script>
+
+    </body>
+
+    </html>

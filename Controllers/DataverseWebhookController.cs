@@ -1,9 +1,11 @@
-﻿using System;
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Xrmbox.VoC.Portal.Data;
 using Xrmbox.VoC.Portal.Models.Local;
 using Xrmbox.VoC.Portal.Services;
@@ -182,6 +184,8 @@ namespace Xrmbox.VoC.Portal.Controllers
         [IgnoreAntiforgeryToken]
         public async Task<IActionResult> FlowLog([FromBody] FlowLogDto flow)
         {
+            Console.WriteLine($"LOG REÇU : Flow={flow?.FlowName}, Status={flow?.Status}, Msg={flow?.ErrorMessage}");
+
             if (flow == null)
             {
                 await TryAddLogAsync("LogFlowExecution", "Error", "Payload null", null);
@@ -190,11 +194,12 @@ namespace Xrmbox.VoC.Portal.Controllers
 
             try
             {
-                // Utiliser TryAddLogAsync pour centraliser l'écriture
+                var userFriendlyMessage = BuildUserFriendlyMessage(flow.ErrorMessage);
+
                 await TryAddLogAsync(
                     action: "PowerAutomateFlow",
                     status: flow.Status ?? string.Empty,
-                    message: flow.ErrorMessage ?? string.Empty,
+                    ErrorMessage: userFriendlyMessage,
                     entityName: flow.FlowName ?? string.Empty
                 );
 
@@ -202,12 +207,130 @@ namespace Xrmbox.VoC.Portal.Controllers
             }
             catch (Exception ex)
             {
-                await TryAddLogAsync("LogFlowExecution", "Error", ex.ToString(), flow?.FlowName);
+                await TryAddLogAsync("LogFlowExecution", "Error", ex.Message, flow.FlowName);
                 return StatusCode(500);
             }
         }
 
-        private async Task TryAddLogAsync(string action, string status, string message, string? entityName)
+        private static string BuildUserFriendlyMessage(string? errorPayload)
+        {
+            if (string.IsNullOrWhiteSpace(errorPayload))
+                return "Erreur technique (vérifier Power Automate)";
+
+            try
+            {
+                using var doc = JsonDocument.Parse(errorPayload);
+
+                // Si ce n'est pas un tableau (historique d'actions), on extrait le message direct
+                if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                {
+                    return ExtractOutputsMessage(doc.RootElement) ?? errorPayload;
+                }
+
+                foreach (var action in doc.RootElement.EnumerateArray())
+                {
+                    var status = GetString(action, "status");
+                    if (!string.Equals(status, "Failed", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var actionName = GetString(action, "name") ?? string.Empty;
+                    var rawMessage = ExtractOutputsMessage(action);
+
+                    // --- PRIORITÉ 1 : Détection spécifique des oublis de configuration ---
+
+                    // Cas : Oubli de questionnaire ou participant (Validation Error Dataverse)
+                    if (rawMessage != null && rawMessage.Contains("One or more validation errors occurred", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return "Erreur de configuration : Un champ obligatoire est manquant (ex: Questionnaire ou Client non renseigné).";
+                    }
+
+                    // Cas : Liste vide (Lister les lignes)
+                    if (actionName.Contains("Lister_les_lignes", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var body = GetElement(action, "outputs", "body");
+                        if (IsEmptyValueArray(body))
+                        {
+                            return "Erreur : Aucun participant éligible n'a été trouvé pour cette campagne.";
+                        }
+                    }
+
+                    // Cas : Condition spécifique au questionnaire
+                    if (actionName.Contains("Questionnaire", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return "Erreur : Le questionnaire lié est introuvable ou désactivé.";
+                    }
+
+                    // --- PRIORITÉ 2 : Erreurs techniques Dataverse (Connectivité) ---
+                    var statusCode = GetInt(action, "outputs", "statusCode");
+                    if (statusCode.HasValue && statusCode.Value >= 400)
+                    {
+                        return $"Erreur technique Dataverse ({statusCode}) : {rawMessage ?? "Détail indisponible"}";
+                    }
+
+                    // --- PRIORITÉ 3 : Fallback ---
+                    if (!string.IsNullOrWhiteSpace(rawMessage)) return rawMessage;
+                }
+            }
+            catch
+            {
+                return "Format d'erreur illisible";
+            }
+
+            return "Erreur inconnue lors de l'exécution du flux";
+        }
+
+        private static bool IsEmptyValueArray(JsonElement? body)
+        {
+            if (body == null || body.Value.ValueKind == JsonValueKind.Undefined) return false;
+
+            if (body.Value.ValueKind == JsonValueKind.Object
+                && body.Value.TryGetProperty("value", out var valueElem)
+                && valueElem.ValueKind == JsonValueKind.Array)
+            {
+                return valueElem.GetArrayLength() == 0;
+            }
+
+            return false;
+        }
+
+        private static string? ExtractOutputsMessage(JsonElement element)
+        {
+            return GetString(element, "outputs", "body", "message")
+                ?? GetString(element, "outputs", "body", "error", "message")
+                ?? GetString(element, "outputs", "body", "title")
+                ?? GetString(element, "outputs", "message")
+                ?? GetString(element, "outputs", "title");
+        }
+
+        private static string? GetString(JsonElement element, params string[] path)
+        {
+            var current = element;
+            foreach (var segment in path)
+            {
+                if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment, out current))
+                {
+                    return null;
+                }
+            }
+
+            return current.ValueKind == JsonValueKind.String ? current.GetString() : current.ToString();
+        }
+
+        private static int? GetInt(JsonElement element, params string[] path)
+        {
+            var current = element;
+            foreach (var segment in path)
+            {
+                if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment, out current))
+                {
+                    return null;
+                }
+            }
+
+            if (current.ValueKind == JsonValueKind.Number && current.TryGetInt32(out var value)) return value;
+            return null;
+        }
+
+        private async Task TryAddLogAsync(string action, string status, string ErrorMessage, string? entityName)
         {
             try
             {
@@ -217,7 +340,7 @@ namespace Xrmbox.VoC.Portal.Controllers
                     EntityName = entityName ?? string.Empty,
                     Action = action,
                     Status = status,
-                    Message = message
+                    Message = ErrorMessage
                 };
 
                 _dbContext.IntegrationLogs.Add(log);
@@ -263,6 +386,19 @@ namespace Xrmbox.VoC.Portal.Controllers
             public string? FlowName { get; set; }
             public string? Status { get; set; }
             public string? ErrorMessage { get; set; }
+        }
+
+        private static JsonElement? GetElement(JsonElement element, params string[] path)
+        {
+            var current = element;
+            foreach (var segment in path)
+            {
+                if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment, out current))
+                {
+                    return null;
+                }
+            }
+            return current;
         }
     }
 }

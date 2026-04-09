@@ -1,66 +1,122 @@
 @{
-    ViewData["Title"] = "Survey";
-
-    // Utiliser les valeurs passées par le controller via ViewBag
+    Layout = null;
     var surveyId = (ViewBag.SurveyId ?? string.Empty).ToString();
     var participantId = (ViewBag.ParticipantId ?? string.Empty).ToString();
     var token = (ViewBag.Token ?? string.Empty).ToString();
     var campagneId = (ViewBag.CampagneId ?? string.Empty).ToString();
-    // ViewBag.SavedData peut contenir du JSON (objet) ou null
 }
 
-@section Styles {
-    @* CSS de SurveyJS *@
-    
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Questionnaire de Satisfaction - XRMBOX</title>
+
     <link href="https://unpkg.com/survey-jquery/defaultV2.min.css" rel="stylesheet" />
+
     <style>
-        .sv-root-modern {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
+        :root {
+            --primary-blue: #2e2e8e;
+            --bg-gradient: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         }
 
-        .sv-container-modern {
-            max-width: 800px;
-            margin: auto;
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-gradient);
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 40px 20px;
+        }
+
+        .survey-wrapper {
+            width: 100%;
+            max-width: 1100px; /* Pour bien occuper l'espace comme sur tes dessins */
+        }
+
+        #surveyContainer {
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            padding: 25px;
+        }
+
+        /* --- CORRECTION ALIGNEMENT TITRE --- */
+        .sd-header__title {
+            text-align: center !important; /* Centre le titre "Questionnaire de satisfaction" */
+            width: 100%;
+        }
+
+        /* --- CORRECTION LARGEUR INTERNE --- */
+        .sd-container-modern {
+            max-width: 100% !important;
+        }
+
+        .sd-root-modern {
+            --sd-primary: var(--primary-blue);
+            --sd-primary-light: rgba(46, 46, 142, 0.1);
+            --sd-border-radius: 12px;
+            --sd-base-vertical-unit: 14px; /* Un peu plus d'espace pour la lisibilité */
+        }
+
+        .loading-state {
+            text-align: center;
+            padding: 60px;
+            color: var(--primary-blue);
+            font-weight: 600;
+            font-size: 1.2rem;
+        }
+
+        .footer-brand {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 0.9rem;
+            color: #444;
+            opacity: 0.8;
+            padding-bottom: 20px;
         }
     </style>
+</head>
+<body>
 
-}
+    <div class="survey-wrapper">
+        <div id="surveyContainer">
+            <div class="loading-state">
+                Chargement de votre questionnaire...
+            </div>
+        </div>
 
-<div class="container">
-    <div class="py-4">
-        <div id="surveyContainer">Chargement du questionnaire…</div>
+        <div class="footer-brand">
+            Propulsé par <strong>XRMBOX VoC Portal</strong>
+        </div>
     </div>
-    <div id="resultContainer" style="margin-top:16px;"></div>
-</div>
 
-@section Scripts {
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/survey-jquery/survey.jquery.min.js"></script>
+
     <script>
         (function () {
-            Survey.StylesManager.applyTheme("defaultV2");
+            // Appliquer le thème moderne
+            Survey.StylesManager.applyTheme("modern");
 
             const surveyId = '@surveyId';
             const participantId = '@participantId';
             const token = '@token';
             const campagneId = '@campagneId';
 
-            // Correction 1: Injection sécurisée du JSON
             const rawSavedData = `@Html.Raw(ViewBag.SavedData ?? "null")`;
             let savedData = null;
-            if (rawSavedData !== "null") {
-                try {
-                    savedData = JSON.parse(rawSavedData);
-                } catch (e) {
-                    // Si c'est déjà un objet (selon comment le controller l'envoie)
-                    savedData = @Html.Raw(ViewBag.SavedData ?? "null");
-                }
-            }
+            try {
+                if (rawSavedData !== "null") savedData = JSON.parse(rawSavedData);
+            } catch (e) { console.log("Pas de données partielles."); }
 
             if (!surveyId) {
-                document.getElementById('surveyContainer').innerText = "ID du questionnaire manquant.";
+                document.getElementById('surveyContainer').innerHTML = "<div class='loading-state'>Erreur : Identifiant de questionnaire manquant.</div>";
                 return;
             }
 
@@ -72,30 +128,30 @@
                 .then(json => {
                     const survey = new Survey.Model(json);
 
-                    if (savedData) {
-                        survey.data = savedData;
-                    }
+                    // Optionnel : Forcer le titre à être plus grand via JS si besoin
+                    survey.title = json.title || "Questionnaire de satisfaction";
 
+                    if (savedData) survey.data = savedData;
+
+                    // Sauvegarde partielle
                     let saveTimeout = null;
                     survey.onValueChanged.add(function (sender) {
                         if (!token) return;
-
                         if (saveTimeout) clearTimeout(saveTimeout);
                         saveTimeout = setTimeout(function () {
                             const payload = {
                                 token: token,
                                 jsonData: JSON.stringify(sender.data)
                             };
-
-                            // Attention : vérifie si ton API est /api/responses/partial ou /Survey/SavePartial
                             fetch('/Survey/SavePartial', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                                 body: new URLSearchParams(payload)
                             });
-                        }, 1000);
+                        }, 2000);
                     });
 
+                    // Envoi final
                     survey.onComplete.add(function (sender) {
                         const payload = {
                             SurveyId: surveyId,
@@ -110,23 +166,24 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(payload)
                         })
-                        // CORRECTION ICI : Ajout des parenthèses (r) =>
                         .then((r) => {
                             if (r.ok) {
-                                document.getElementById('surveyContainer').innerHTML = "<h4>Merci !</h4>";
+                                document.getElementById('surveyContainer').innerHTML =
+                                    "<div style='padding:80px 20px; text-align:center;'> <h2 style='color:var(--primary-blue);'>Merci de votre participation !</h2><p>Vos réponses ont été transmises avec succès à nos équipes.</p></div>";
                             } else {
-                                document.getElementById('surveyContainer').innerHTML = "<h4>Erreur lors de l'enregistrement.</h4>";
+                                alert("Une erreur est survenue lors de l'enregistrement final.");
                             }
-                        })
-                        .catch(err => console.error("Erreur finale:", err));
+                        });
                     });
 
+                    // Rendu dans le conteneur
                     $("#surveyContainer").Survey({ model: survey });
                 })
                 .catch(err => {
                     console.error(err);
-                    document.getElementById('surveyContainer').innerText = "Erreur de chargement.";
+                    document.getElementById('surveyContainer').innerHTML = "<div class='loading-state'>Impossible de charger le questionnaire.</div>";
                 });
         })();
     </script>
-}
+</body>
+</html>

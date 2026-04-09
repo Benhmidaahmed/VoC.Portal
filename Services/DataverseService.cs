@@ -294,60 +294,62 @@ namespace Xrmbox.VoC.Portal.Services
         /// <summary>
         /// Enregistre la réponse localement, tente la synchronisation immédiate puis retourne l'ID local (int) ou l'ID Dataverse (GUID) sous forme de chaîne.
         /// </summary>
-        public string SubmitResponse(Models.SubmitResponseRequest req)
+        public string SubmitResponse(Xrmbox.VoC.Portal.Models.SubmitResponseRequest req)
         {
             if (req == null) throw new ArgumentNullException(nameof(req));
 
             if (req.SurveyId == Guid.Empty) throw new ArgumentException("SurveyId requis");
             if (string.IsNullOrWhiteSpace(req.ResponseJson)) throw new ArgumentException("ResponseJson requis");
 
-            // Remplacez ce bloc dans la méthode SubmitResponse
-
-            Guid? campagneGuid = req.CampagneId;
+            // Gestion propre de l'ID de campagne
+            Guid? campagneGuid = null;
             if (req.CampagneId.HasValue && req.CampagneId.Value != Guid.Empty)
             {
                 campagneGuid = req.CampagneId.Value;
             }
-            else
-            {
-                campagneGuid = null;
-            }
 
-            // Construire l'objet local
+            // 1. Construction de l'objet local
+            // Note : On force IsCompleted = true car cette méthode est appelée lors du onComplete
             var local = new LocalResponse
             {
                 Name = "Réponse Portail - " + DateTime.Now.ToString("g"),
                 SurveyId = req.SurveyId,
                 ParticipantId = req.ParticipantId,
-                CampagneId = campagneGuid, // <-- mapping corrigé ici
+                CampagneId = campagneGuid,
                 ResponseJson = req.ResponseJson,
                 SubmittedAt = DateTime.Now,
                 IsSynced = false,
                 DataverseId = null,
-                SyncError = null
+                SyncError = null,
+                Token = req.Token ?? Guid.Empty,
+                IsCompleted = true // CRUCIAL : On marque que c'est une réponse terminée
             };
 
             try
             {
-                // Sauvegarde locale
+                // 2. Sauvegarde en base de données locale (SQL)
                 _dbContext.LocalResponses.Add(local);
-                _dbContext.SaveChanges(); // obtient l'Id local
+                _dbContext.SaveChanges(); // On génère l'ID local ici
 
-                // Tentative de synchronisation immédiate
+                // 3. Tentative de synchronisation vers Dataverse
+                // On n'appelle QUE cette fonction pour cet enregistrement précis.
                 SyncLocalResponseToDataverse(local);
-                SyncPendingResponses();
 
-                // Retourner l'ID Dataverse si synchronisé, sinon l'ID local en string
+                // --- CORRECTION : SUPPRESSION DE SyncPendingResponses() ICI ---
+                // Appeler SyncPendingResponses() ici créait le doublon car il 
+                // scannait la base avant que le premier cycle ne soit fini.
+
+                // 4. Retourner l'ID de suivi (Dataverse si possible, sinon Local)
                 if (local.IsSynced && !string.IsNullOrWhiteSpace(local.DataverseId))
                 {
-                    return local.DataverseId!;
+                    return local.DataverseId;
                 }
 
                 return local.Id.ToString();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Dataverse Error] SubmitResponse failed (local persist): {ex.Message}");
+                Console.WriteLine($"[Dataverse Error] SubmitResponse failed: {ex.Message}");
                 throw;
             }
         }
