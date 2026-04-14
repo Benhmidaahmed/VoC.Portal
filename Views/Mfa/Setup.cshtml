@@ -1,0 +1,40 @@
+﻿@model Xrmbox.VoC.Portal.ViewModels.MfaSetupViewModel
+
+@{
+    ViewData["Title"] = "Configuration de l'authentification à deux facteurs";
+}
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-6 text-center">
+            <h1 class="mb-3">Configuration de l'authentification à deux facteurs</h1>
+            <p class="text-muted mb-4">
+                Scannez le QR Code avec Google Authenticator, puis saisissez le code à 6 chiffres pour valider.
+            </p>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <img class="img-fluid" alt="QR Code MFA"
+                         src="data:image/png;base64,@Model.QrCodeBase64" />
+                </div>
+            </div>
+
+            <form asp-controller="Mfa" asp-action="Verify" method="post" class="text-start">
+                @Html.AntiForgeryToken()
+                <div class="mb-3">
+                    <label for="code" class="form-label">Code à 6 chiffres</label>
+                    <input type="text"
+                           id="code"
+                           name="code"
+                           class="form-control"
+                           maxlength="6"
+                           inputmode="numeric"
+                           autocomplete="one-time-code"
+                           placeholder="123456"
+                           required />
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Valider</button>
+            </form>
+        </div>
+    </div>
+</div>

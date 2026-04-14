@@ -10,29 +10,29 @@ namespace Xrmbox.VoC.Portal.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "InvitationBody",
-                table: "Campaigns",
-                type: "nvarchar(max)",
-                nullable: true);
+            //migrationBuilder.AddColumn<string>(
+            //    name: "InvitationBody",
+            //    table: "Campaigns",
+            //    type: "nvarchar(max)",
+            //    nullable: true);
 
-            migrationBuilder.AddColumn<string>(
-                name: "InvitationSubject",
-                table: "Campaigns",
-                type: "nvarchar(max)",
-                nullable: true);
+            //migrationBuilder.AddColumn<string>(
+            //    name: "InvitationSubject",
+            //    table: "Campaigns",
+            //    type: "nvarchar(max)",
+            //    nullable: true);
 
-            migrationBuilder.AddColumn<string>(
-                name: "ReminderBody",
-                table: "Campaigns",
-                type: "nvarchar(max)",
-                nullable: true);
+            //migrationBuilder.AddColumn<string>(
+            //    name: "ReminderBody",
+            //    table: "Campaigns",
+            //    type: "nvarchar(max)",
+            //    nullable: true);
 
-            migrationBuilder.AddColumn<string>(
-                name: "ReminderSubject",
-                table: "Campaigns",
-                type: "nvarchar(max)",
-                nullable: true);
+            //migrationBuilder.AddColumn<string>(
+            //    name: "ReminderSubject",
+            //    table: "Campaigns",
+            //    type: "nvarchar(max)",
+            //    nullable: true);
         }
 
         /// <inheritdoc />

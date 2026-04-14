@@ -1,11 +1,14 @@
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Xrmbox.VoC.Portal.Models;
 using Xrmbox.VoC.Portal.Models.Local;
 
 namespace Xrmbox.VoC.Portal.Data
 {
-    public class AppDbContext : DbContext
+    public class AppDbContext : IdentityDbContext<ApplicationUser>
     {
-        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+        public AppDbContext(DbContextOptions<AppDbContext> options)
+            : base(options)
         {
         }
 
@@ -17,6 +20,8 @@ namespace Xrmbox.VoC.Portal.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            base.OnModelCreating(modelBuilder);
+
             // LocalResponse configuration (existant)
             var responseEntity = modelBuilder.Entity<LocalResponse>();
 

@@ -11,37 +11,37 @@ namespace Xrmbox.VoC.Portal.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<DateTime>(
-                name: "LastPartialSave",
-                table: "SurveyInvitations",
-                type: "datetime2",
-                nullable: true);
+            //migrationBuilder.AddColumn<DateTime>(
+            //    name: "LastPartialSave",
+            //    table: "SurveyInvitations",
+            //    type: "datetime2",
+            //    nullable: true);
 
-            migrationBuilder.AddColumn<DateTime>(
-                name: "LastReminderSent",
-                table: "SurveyInvitations",
-                type: "datetime2",
-                nullable: true);
+            //migrationBuilder.AddColumn<DateTime>(
+            //    name: "LastReminderSent",
+            //    table: "SurveyInvitations",
+            //    type: "datetime2",
+            //    nullable: true);
 
-            migrationBuilder.AddColumn<int>(
-                name: "ReminderCount",
-                table: "SurveyInvitations",
-                type: "int",
-                nullable: false,
-                defaultValue: 0);
+            //migrationBuilder.AddColumn<int>(
+            //    name: "ReminderCount",
+            //    table: "SurveyInvitations",
+            //    type: "int",
+            //    nullable: false,
+            //    defaultValue: 0);
 
-            migrationBuilder.AddColumn<bool>(
-                name: "IsCompleted",
-                table: "LocalResponses",
-                type: "bit",
-                nullable: false,
-                defaultValue: false);
+            //migrationBuilder.AddColumn<bool>(
+            //    name: "IsCompleted",
+            //    table: "LocalResponses",
+            //    type: "bit",
+            //    nullable: false,
+            //    defaultValue: false);
 
-            migrationBuilder.AddColumn<Guid>(
-                name: "Token",
-                table: "LocalResponses",
-                type: "uniqueidentifier",
-                nullable: true);
+            //migrationBuilder.AddColumn<Guid>(
+            //    name: "Token",
+            //    table: "LocalResponses",
+            //    type: "uniqueidentifier",
+            //    nullable: true);
         }
 
         /// <inheritdoc />

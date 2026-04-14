@@ -11,54 +11,54 @@ namespace Xrmbox.VoC.Portal.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AlterColumn<int>(
-                name: "ReminderCount",
-                table: "SurveyInvitations",
-                type: "int",
-                nullable: false,
-                defaultValue: 0,
-                oldClrType: typeof(int),
-                oldType: "int");
+            //migrationBuilder.AlterColumn<int>(
+            //    name: "ReminderCount",
+            //    table: "SurveyInvitations",
+            //    type: "int",
+            //    nullable: false,
+            //    defaultValue: 0,
+            //    oldClrType: typeof(int),
+            //    oldType: "int");
 
-            migrationBuilder.AlterColumn<bool>(
-                name: "IsUsed",
-                table: "SurveyInvitations",
-                type: "bit",
-                nullable: false,
-                defaultValue: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
+            //migrationBuilder.AlterColumn<bool>(
+            //    name: "IsUsed",
+            //    table: "SurveyInvitations",
+            //    type: "bit",
+            //    nullable: false,
+            //    defaultValue: false,
+            //    oldClrType: typeof(bool),
+            //    oldType: "bit");
 
-            migrationBuilder.AddColumn<bool>(
-                name: "IsActive",
-                table: "SurveyInvitations",
-                type: "bit",
-                nullable: false,
-                defaultValue: true);
+            //migrationBuilder.AddColumn<bool>(
+            //    name: "IsActive",
+            //    table: "SurveyInvitations",
+            //    type: "bit",
+            //    nullable: false,
+            //    defaultValue: true);
 
-            migrationBuilder.AddColumn<string>(
-                name: "SyncStatus",
-                table: "SurveyInvitations",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: true);
+            //migrationBuilder.AddColumn<string>(
+            //    name: "SyncStatus",
+            //    table: "SurveyInvitations",
+            //    type: "nvarchar(100)",
+            //    maxLength: 100,
+            //    nullable: true);
 
-            migrationBuilder.CreateTable(
-                name: "IntegrationLogs",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    EventDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    EntityName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    Action = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    Message = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_IntegrationLogs", x => x.Id);
-                });
+            //migrationBuilder.CreateTable(
+            //    name: "IntegrationLogs",
+            //    columns: table => new
+            //    {
+            //        Id = table.Column<int>(type: "int", nullable: false)
+            //            .Annotation("SqlServer:Identity", "1, 1"),
+            //        EventDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+            //        EntityName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+            //        Action = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+            //        Status = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+            //        Message = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true)
+            //    },
+            //    constraints: table =>
+            //    {
+            //        table.PrimaryKey("PK_IntegrationLogs", x => x.Id);
+            //    });
         }
 
         /// <inheritdoc />

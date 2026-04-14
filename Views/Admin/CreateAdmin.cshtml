@@ -1,0 +1,381 @@
+@{
+    Layout = null;
+    var total = ViewBag.TotalResponses ?? 0;
+    var successCount = ViewBag.SyncSuccess ?? 0;
+    var errorsCount = ViewBag.SyncErrors ?? 0;
+    var svcStatus = ViewBag.ServiceStatus ?? "Unknown";
+    var roles = ViewBag.Roles as List<string> ?? new List<string> { "Admin", "SuperAdmin" };
+}
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Créer Administrateur - Xrmbox VoC</title>
+
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" />
+    <link rel="stylesheet" href="~/css/site.css" />
+
+    <style>
+        /* Copié depuis Index.cshtml : styles nécessaires pour la même apparence */
+        /* Style pour le bouton Logout */
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+        }
+
+        .user-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 15px; /* Espace entre le bouton et l'image */
+        }
+
+        .logout-btn {
+            text-decoration: none;
+            background: #e74c3c;
+            color: #fff;
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: 0.3s;
+        }
+
+            .logout-btn:hover {
+                background: #c0392b;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            }
+
+            .logout-btn ion-icon {
+                font-size: 1.2rem;
+            }
+
+            /* Navigation premium */
+
+            .navigation {
+                position: fixed;
+                width: 300px;
+                height: 100%;
+                background: #1f1a6e;
+                border-left: 10px solid #1f1a6e;
+                transition: 0.5s;
+                overflow: hidden;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+            }
+
+                .navigation.active {
+                    width: 80px;
+                }
+
+                .navigation ul {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                }
+
+                    .navigation ul li {
+                        position: relative;
+                        width: 100%;
+                        list-style: none;
+                        border-top-left-radius: 30px;
+                        border-bottom-left-radius: 30px;
+                        transition: background-color 0.2s ease;
+                    }
+
+                        .navigation ul li:hover,
+                        .navigation ul li.active {
+                            background-color: #fff;
+                        }
+
+                        .navigation ul li a {
+                            position: relative;
+                            display: flex;
+                            align-items: center;
+                            gap: 12px;
+                            width: 100%;
+                            text-decoration: none;
+                            color: #fff;
+                            padding: 8px 10px;
+                            transition: color 0.2s ease, transform 0.2s ease;
+                        }
+
+                        .navigation ul li:hover a,
+                        .navigation ul li.active a {
+                            color: #1f1a6e;
+                            transform: translateX(6px);
+                        }
+
+                        .navigation ul li a .icon {
+                            min-width: 56px;
+                            height: 56px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+
+                            .navigation ul li a .icon ion-icon {
+                                font-size: 1.6rem;
+                            }
+
+                        .navigation ul li a .title {
+                            font-size: 1rem;
+                            font-weight: 600;
+                            white-space: nowrap;
+                        }
+
+                        /* Curved active link (effet arrondi) */
+
+                        .navigation ul li:hover a::before,
+                        .navigation ul li.active a::before {
+                            content: "";
+                            position: absolute;
+                            right: 0;
+                            top: -50px;
+                            width: 50px;
+                            height: 50px;
+                            background: transparent;
+                            border-radius: 50%;
+                            box-shadow: 35px 35px 0 10px #fff;
+                            pointer-events: none;
+                        }
+
+                        .navigation ul li.hovered a::before {
+                            top: -65px;
+                        }
+
+                        .navigation ul li:hover a::after,
+                        .navigation ul li.active a::after {
+                            content: "";
+                            position: absolute;
+                            right: 0;
+                            bottom: -50px;
+                            width: 50px;
+                            height: 50px;
+                            background: transparent;
+                            border-radius: 50%;
+                            box-shadow: 35px -35px 0 10px #fff;
+                            pointer-events: none;
+                        }
+
+        /* Tables, cards and other shared styles (kept minimal here relying on site.css) */
+        .cardHeader .btn {
+            position: relative;
+            padding: 5px 10px;
+            background: #1f1a6e;
+            text-decoration: none;
+            color: #fff;
+            border-radius: 6px;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        .alert-success {
+            background: #e6f6ea;
+            color: #1b7a3b;
+            border: 1px solid #c6e8cf;
+        }
+        .alert-error {
+            background: #fdecea;
+            color: #b30000;
+            border: 1px solid #f5c2c2;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--black1);
+        }
+
+        .form-control, .form-select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            outline: none;
+            transition: 0.3s;
+        }
+
+            .form-control:focus, .form-select:focus {
+                border-color: #1f1a6e;
+                box-shadow: 0 0 5px rgba(31, 26, 110, 0.2);
+            }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="navigation">
+            <ul>
+                <li class="active">
+                    <a asp-controller="Admin" asp-action="Index">
+                        <span class="icon"><ion-icon name="cloud-done-outline"></ion-icon></span>
+                        <span class="title">Dashboard</span>
+                    </a>
+                </li>
+
+
+                <li>
+                    <a href="#" data-type="Invitations">
+                        <span class="icon"><ion-icon name="mail-outline"></ion-icon></span>
+                        <span class="title">Invitations</span>
+                    </a>
+                </li>
+
+                <li>
+                    <a href="#" data-type="Réponses">
+                        <span class="icon"><ion-icon name="chatbubbles-outline"></ion-icon></span>
+                        <span class="title">Réponses</span>
+                    </a>
+                </li>
+
+                <li>
+                    <a href="#" data-type="Campagnes">
+                        <span class="icon"><ion-icon name="folder-outline"></ion-icon></span>
+                        <span class="title">Campagnes</span>
+                    </a>
+                </li>
+
+                @if (User.IsInRole("SuperAdmin"))
+                {
+                    <li>
+                        <a asp-controller="Admin" asp-action="CreateAdmin">
+                            <span class="icon"><ion-icon name="people-outline"></ion-icon></span>
+                            <span class="title">Gestion Admins</span>
+                        </a>
+                    </li>
+                }
+            </ul>
+        </div>
+
+        <div class="main">
+            <div class="topbar">
+                <div class="toggle"><ion-icon name="menu-outline"></ion-icon></div>
+
+                <div class="search">
+                    <label>
+                        <input type="text" placeholder="Search..." />
+                        <ion-icon name="search-outline"></ion-icon>
+                    </label>
+                </div>
+
+                <div class="user-wrapper">
+                    <form asp-area="Identity" asp-page="/Account/Logout" method="post" style="display:inline;">
+                        <button type="submit" class="logout-btn" style="border:none; cursor:pointer;">
+                            <ion-icon name="log-out-outline"></ion-icon>
+                            <span>Déconnexion</span>
+                        </button>
+                    </form>
+
+                    <div class="user">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=2a2185&color=fff" alt="user" />
+                    </div>
+                </div>
+            </div>
+
+            @* Notifications TempData *@
+            <div class="px-4 pt-3">
+                @if (TempData["SuccessMessage"] != null)
+                {
+                    <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+                }
+                @if (TempData["ErrorMessage"] != null)
+                {
+                    <div class="alert alert-error">@TempData["ErrorMessage"]</div>
+                }
+            </div>
+
+            <div class="details">
+                <div class="recentOrders">
+                    <div class="cardHeader">
+                        <h2>Créer un nouvel Administrateur</h2>
+                        <a asp-controller="Admin" asp-action="Index" class="btn">Retour</a>
+                    </div>
+
+                    <div style="padding:20px;">
+                        <form asp-controller="Admin" asp-action="CreateAdmin" method="post">
+                            @Html.AntiForgeryToken()
+
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" id="email" name="email" class="form-control" required placeholder="admin@exemple.com" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="roleName" class="form-label">Rôle</label>
+                                <select id="roleName" name="roleName" class="form-select" required>
+                                    @foreach (var r in roles)
+                                    {
+                                        <option value="@r">@r</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <button type="submit" class="btn" style="background:#1f1a6e;color:#fff;padding:8px 18px;border-radius:6px;">Créer Administrateur</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+
+    <script>
+        // Menu Toggle (copié depuis Index.cshtml)
+        let toggle = document.querySelector(".toggle");
+        let navigation = document.querySelector(".navigation");
+        let main = document.querySelector(".main");
+
+        if (toggle && navigation && main) {
+            toggle.onclick = function () {
+                navigation.classList.toggle("active");
+                main.classList.toggle("active");
+            };
+        }
+
+        // Hovered + filter behavior (copié)
+        const navLinks = document.querySelectorAll(".navigation a[data-type]");
+        const rows = document.querySelectorAll("tr.filter-item");
+
+        navLinks.forEach(link => {
+            link.addEventListener("click", (e) => {
+                e.preventDefault();
+
+                navLinks.forEach(l => l.parentElement.classList.remove("active"));
+                link.parentElement.classList.add("active");
+
+                const type = link.getAttribute("data-type");
+                rows.forEach(row => {
+                    const rowType = row.getAttribute("data-type");
+                    if (type === "All" || rowType === type) {
+                        row.classList.remove("filter-hidden");
+                    } else {
+                        row.classList.add("filter-hidden");
+                    }
+                });
+            });
+        });
+
+        // Hovered effect
+        let list = document.querySelectorAll(".navigation li");
+        function activeLink() {
+            list.forEach((item) => item.classList.remove("hovered"));
+            this.classList.add("hovered");
+        }
+        list.forEach((item) => item.addEventListener("mouseover", activeLink));
+    </script>
+</body>
+</html>

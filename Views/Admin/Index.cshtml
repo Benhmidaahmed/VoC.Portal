@@ -93,6 +93,42 @@
 
 
         <style>
+        /* Style pour le bouton Logout */
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+        }
+
+        .user-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 15px; /* Espace entre le bouton et l'image */
+        }
+
+        .logout-btn {
+            text-decoration: none;
+            background: #e74c3c;
+            color: #fff;
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: 0.3s;
+        }
+
+            .logout-btn:hover {
+                background: #c0392b;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            }
+
+            .logout-btn ion-icon {
+                font-size: 1.2rem;
+            }
 
             /* Navigation premium */
 
@@ -357,6 +393,16 @@
 
                     </li>
 
+                    @if (User.IsInRole("SuperAdmin"))
+                    {
+                        <li>
+                            <a asp-controller="Admin" asp-action="CreateAdmin">
+                                <span class="icon"><ion-icon name="people-outline"></ion-icon></span>
+                                <span class="title">Gestion Admins</span>
+                            </a>
+                        </li>
+                    }
+
                 </ul>
 
             </div>
@@ -365,15 +411,31 @@
 
             <div class="main">
 
-                <div class="topbar">
-
-                    <div class="toggle"><ion-icon name="menu-outline"></ion-icon></div>
-
-                    <div class="search"><label><input type="text" placeholder="Search logs..." /><ion-icon name="search-outline"></ion-icon></label></div>
-
-                    <div class="user"><img src="https://ui-avatars.com/api/?name=Ahmed+Ben+Hmida&background=2a2185&color=fff" alt="user" /></div>
-
+            <div class="topbar">
+                <div class="toggle">
+                    <ion-icon name="menu-outline"></ion-icon>
                 </div>
+
+                <div class="search">
+                    <label>
+                        <input type="text" placeholder="Search logs..." />
+                        <ion-icon name="search-outline"></ion-icon>
+                    </label>
+                </div>
+
+                <div class="user-wrapper">
+                    <form asp-area="Identity" asp-page="/Account/Logout" asp-route-returnUrl="@Url.Action("Index", "Home", new { area = "" })" method="post" style="display:inline;">
+                        <button type="submit" class="logout-btn" style="border:none; cursor:pointer;">
+                            <ion-icon name="log-out-outline"></ion-icon>
+                            <span>Déconnexion</span>
+                        </button>
+                    </form>
+
+                    <div class="user">
+                        <img src="https://ui-avatars.com/api/?name=Ahmed+Ben+Hmida&background=2a2185&color=fff" alt="user" />
+                    </div>
+                </div>
+            </div>
 
 
 
@@ -489,9 +551,9 @@
 
                                         var displayMessage = !string.IsNullOrEmpty(log.Message)
 
-                                        ? log.Message
+                                        ? log.Message                   
 
-                                        : (!string.IsNullOrEmpty(errorMessageAlt) ? errorMessageAlt : "Erreur technique (vérifier Power Automate)");
+                                                                                                                                                                                                                                                                                                                                : (!string.IsNullOrEmpty(errorMessageAlt) ? errorMessageAlt : "Erreur technique (vérifier Power Automate");
 
 
 

@@ -1,34 +1,78 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.EntityFrameworkCore;
-using Xrmbox.VoC.Portal.Services;
+using Microsoft.Identity.Web;
+using Microsoft.Extensions.Logging;
 using Xrmbox.VoC.Portal.Data;
+using Xrmbox.VoC.Portal.Models;
+using Xrmbox.VoC.Portal.Services;
 
+// 1. ON DÉCLARE LE BUILDER EN PREMIER
 var builder = WebApplication.CreateBuilder(args);
 
-// Connection string (lue depuis appsettings.json ou variable d'environnement)
+// --- CONFIGURATION BDD ---
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' introuvable.");
 
-// Enregistrer le DbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(connectionString));
 
-// Services existants
-builder.Services.AddRazorPages();
+// --- SERVICES IDENTITY & AUTHENTICATION ---
+// Ajout du support des rôles via .AddRoles<IdentityRole>()
+builder.Services.AddDefaultIdentity<ApplicationUser>(options => {
+    options.SignIn.RequireConfirmedAccount = false;
+})
+.AddRoles<IdentityRole>()
+.AddEntityFrameworkStores<AppDbContext>()
+.AddDefaultTokenProviders();
+
+builder.Services.AddAuthentication()
+    .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"));
+
+// --- POLITIQUES D'ACCÈS ---
+builder.Services.AddRazorPages(options =>
+{
+    options.Conventions.AuthorizeAreaPage("Identity", "/Account/Register", "NobodyCanAccess");
+});
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("NobodyCanAccess", policy => policy.RequireAssertion(context => false));
+});
+
+// --- AUTRES SERVICES ---
 builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<DataverseService>();
 builder.Services.AddHttpClient();
-builder.Services.AddTransient<IEmailService, EmailService>();
-// Remplacer AddTransient par AddScoped
 builder.Services.AddScoped<IEmailService, EmailService>();
-
 builder.Services.AddHostedService<ReminderWorker>();
-// --- 2. CONFIGURATION DE L'APPLICATION ---
 
+// Enregistrement du service EmailSender (IEmailSender) pour l'Identity UI
+builder.Services.AddTransient<IEmailSender, EmailSender>();
+
+// 2. ON CONSTRUIT L'APPLICATION
 var app = builder.Build();
 
+// --- SEEDING : création/initialisation des rôles au démarrage ---
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        // Méthode bloquante au démarrage pour s'assurer que les rôles existent
+        SeedData.InitializeAsync(services).GetAwaiter().GetResult();
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Erreur lors de l'initialisation des rôles.");
+    }
+}
+
+// --- MIDDLEWARE PIPELINE ---
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
@@ -37,16 +81,27 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
 app.UseRouting();
 
+// MIDDLEWARE DE REDIRECTION FORCÉE
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/Identity/Account/Register", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.Redirect("/Identity/Account/Login");
+        return;
+    }
+    await next();
+});
+
+app.UseAuthentication();
 app.UseAuthorization();
 
-// Mapper les routes MVC (indispensable pour SurveysController et SurveyViewController)
+// --- ROUTES ---
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.MapRazorPages();
 
-app.Run();  
+app.Run();

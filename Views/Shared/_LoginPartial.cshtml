@@ -1,0 +1,27 @@
+﻿@using Microsoft.AspNetCore.Identity
+@using Xrmbox.VoC.Portal.Models
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+
+<ul class="navbar-nav ms-auto">
+    @if (SignInManager.IsSignedIn(User))
+    {
+        <li class="nav-item">
+            <span class="nav-link text-dark">Bonjour, @User.Identity?.Name</span>
+        </li>
+        <li class="nav-item">
+            <form class="d-inline" asp-area="Identity" asp-page="/Account/Logout" method="post">
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Se déconnecter</button>
+            </form>
+        </li>
+    }
+    else
+    {
+        <li class="nav-item">
+            <a class="nav-link text-dark" asp-area="Identity" asp-page="/Account/Login">Se connecter</a>
+        </li>
+        @* <li class="nav-item">
+            <a class="btn btn-primary btn-sm ms-2" asp-area="Identity" asp-page="/Account/Register">S’inscrire</a>
+        </li> *@
+    }
+</ul>

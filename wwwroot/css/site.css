@@ -385,3 +385,19 @@ body {
     box-shadow: 0 7px 25px rgba(0, 0, 0, 0.08);
     border-radius: 20px;
 }
+/* Cache absolument tout ce qui ressemble à un lien d'inscription */
+a[href*="Register"],
+#register,
+.nav-link[href*="Register"],
+button[formaction*="Register"] {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+}
+a#register, a[href*="Register"] {
+    display: none !important;
+}

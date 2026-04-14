@@ -32,16 +32,36 @@ namespace Xrmbox.VoC.Portal.Services
             if (configuration == null) throw new ArgumentNullException(nameof(configuration));
             if (dbContext == null) throw new ArgumentNullException(nameof(dbContext));
 
-            var conn = configuration["Dataverse:ConnectionString"];
+            // Lire proprement la chaîne de connexion et s'assurer qu'une "Authority" est présente
+            var conn = configuration["Dataverse:ConnectionString"] ?? string.Empty;
+
             if (string.IsNullOrWhiteSpace(conn))
             {
                 throw new InvalidOperationException("La clé Dataverse:ConnectionString est requise dans la configuration.");
             }
 
+            // Si l'Authority n'est pas fournie, on l'ajoute à partir du TenantId AzureAd si disponible
+            if (!conn.Contains("Authority=", StringComparison.OrdinalIgnoreCase))
+            {
+                var tenantId = configuration["AzureAd:TenantId"];
+                var authority = !string.IsNullOrWhiteSpace(tenantId)
+                    ? $"https://login.microsoftonline.com/{tenantId}"
+                    : "https://login.microsoftonline.com/common";
+
+                // Veiller à terminer par ';'
+                if (!conn.EndsWith(";", StringComparison.Ordinal))
+                {
+                    conn += ";";
+                }
+
+                conn += $"Authority={authority};";
+            }
+
+            // Initialisation du ServiceClient après avoir assuré la présence de l'Authority
             _client = new ServiceClient(conn);
             if (!_client.IsReady)
             {
-                throw new InvalidOperationException("Impossible de se connecter à Dataverse via ServiceClient. Vérifiez la connection string.");
+                throw new InvalidOperationException("Impossible de se connecter à Dataverse via ServiceClient. Vérifiez la connection string et l'authority.");
             }
 
             _dbContext = dbContext;

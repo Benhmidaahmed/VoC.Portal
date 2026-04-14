@@ -27,8 +27,8 @@ namespace Xrmbox.VoC.Portal.Services
 
             using (var client = new SmtpClient())
             {
-                // On récupère les réglages depuis appsettings.json
-                await client.ConnectAsync(_config["Smtp:Server"], int.Parse(_config["Smtp:Port"]), true);
+                // Utiliser StartTls pour le port 587 (compatible Gmail)
+                await client.ConnectAsync(_config["Smtp:Server"], int.Parse(_config["Smtp:Port"]), MailKit.Security.SecureSocketOptions.StartTls);
                 await client.AuthenticateAsync(_config["Smtp:User"], _config["Smtp:Pass"]);
                 await client.SendAsync(emailMessage);
                 await client.DisconnectAsync(true);
