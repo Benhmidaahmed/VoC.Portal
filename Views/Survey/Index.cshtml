@@ -4,6 +4,9 @@
     var participantId = (ViewBag.ParticipantId ?? string.Empty).ToString();
     var token = (ViewBag.Token ?? string.Empty).ToString();
     var campagneId = (ViewBag.CampagneId ?? string.Empty).ToString();
+
+    // Récupération du HTML de la campagne
+    string designHtml = ViewBag.PageDesignHtml?.ToString() ?? "";
 }
 
 <!DOCTYPE html>
@@ -16,6 +19,7 @@
     <link href="https://unpkg.com/survey-jquery/defaultV2.min.css" rel="stylesheet" />
 
     <style>
+        /* Styles de secours si le design Unlayer est vide */
         :root {
             --primary-blue: #2e2e8e;
             --bg-gradient: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
@@ -23,85 +27,52 @@
 
         body {
             font-family: 'Inter', sans-serif;
-            background: var(--bg-gradient);
-            min-height: 100vh;
             margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            padding: 40px 20px;
+            padding: 0;
         }
 
-        .survey-wrapper {
+        /* Conteneur SurveyJS quand il est injecté */
+        #surveyElement {
             width: 100%;
-            max-width: 1100px; /* Pour bien occuper l'espace comme sur tes dessins */
-        }
-
-        #surveyContainer {
             background: #ffffff;
-            border-radius: 20px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            border-radius: 12px;
             overflow: hidden;
-            padding: 25px;
-        }
-
-        /* --- CORRECTION ALIGNEMENT TITRE --- */
-        .sd-header__title {
-            text-align: center !important; /* Centre le titre "Questionnaire de satisfaction" */
-            width: 100%;
-        }
-
-        /* --- CORRECTION LARGEUR INTERNE --- */
-        .sd-container-modern {
-            max-width: 100% !important;
-        }
-
-        .sd-root-modern {
-            --sd-primary: var(--primary-blue);
-            --sd-primary-light: rgba(46, 46, 142, 0.1);
-            --sd-border-radius: 12px;
-            --sd-base-vertical-unit: 14px; /* Un peu plus d'espace pour la lisibilité */
         }
 
         .loading-state {
             text-align: center;
             padding: 60px;
-            color: var(--primary-blue);
+            color: #2e2e8e;
             font-weight: 600;
-            font-size: 1.2rem;
-        }
-
-        .footer-brand {
-            text-align: center;
-            margin-top: 30px;
-            font-size: 0.9rem;
-            color: #444;
-            opacity: 0.8;
-            padding-bottom: 20px;
         }
     </style>
 </head>
 <body>
 
-    <div class="survey-wrapper">
-        <div id="surveyContainer">
-            <div class="loading-state">
-                Chargement de votre questionnaire...
+    @if (!string.IsNullOrEmpty(designHtml) && designHtml.Contains("{{SURVEY_HERE}}"))
+    {
+        @* IMPORTANT : On remplace le texte de substitution par le vrai conteneur SurveyJS 
+           dans le HTML généré par l'éditeur Unlayer.
+        *@
+        @Html.Raw(designHtml.Replace("{{SURVEY_HERE}}", "<div id='surveyElement'><div class='loading-state'>Chargement du questionnaire...</div></div>"))
+    }
+    else
+    {
+        <div style="background: var(--bg-gradient); min-height: 100vh; padding: 40px 20px; display: flex; justify-content: center;">
+            <div style="width: 100%; max-width: 1100px;">
+                <div id="surveyElement">
+                    <div class="loading-state">Chargement du questionnaire...</div>
+                </div>
             </div>
         </div>
-
-        <div class="footer-brand">
-            Propulsé par <strong>XRMBOX VoC Portal</strong>
-        </div>
-    </div>
+    }
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/survey-jquery/survey.jquery.min.js"></script>
 
     <script>
         (function () {
-            // Appliquer le thème moderne
+            "use strict";
             Survey.StylesManager.applyTheme("modern");
 
             const surveyId = '@surveyId';
@@ -116,7 +87,8 @@
             } catch (e) { console.log("Pas de données partielles."); }
 
             if (!surveyId) {
-                document.getElementById('surveyContainer').innerHTML = "<div class='loading-state'>Erreur : Identifiant de questionnaire manquant.</div>";
+                const el = document.getElementById('surveyElement');
+                if(el) el.innerHTML = "<div class='loading-state'>Erreur : ID manquant.</div>";
                 return;
             }
 
@@ -127,13 +99,10 @@
                 })
                 .then(json => {
                     const survey = new Survey.Model(json);
-
-                    // Optionnel : Forcer le titre à être plus grand via JS si besoin
                     survey.title = json.title || "Questionnaire de satisfaction";
-
                     if (savedData) survey.data = savedData;
 
-                    // Sauvegarde partielle
+                    // Sauvegarde partielle automatique
                     let saveTimeout = null;
                     survey.onValueChanged.add(function (sender) {
                         if (!token) return;
@@ -168,20 +137,21 @@
                         })
                         .then((r) => {
                             if (r.ok) {
-                                document.getElementById('surveyContainer').innerHTML =
-                                    "<div style='padding:80px 20px; text-align:center;'> <h2 style='color:var(--primary-blue);'>Merci de votre participation !</h2><p>Vos réponses ont été transmises avec succès à nos équipes.</p></div>";
+                                document.getElementById('surveyElement').innerHTML =
+                                    "<div style='padding:80px 20px; text-align:center;'> <h2 style='color:#2e2e8e;'>Merci !</h2><p>Vos réponses ont été enregistrées.</p></div>";
                             } else {
-                                alert("Une erreur est survenue lors de l'enregistrement final.");
+                                alert("Erreur lors de l'envoi.");
                             }
                         });
                     });
 
-                    // Rendu dans le conteneur
-                    $("#surveyContainer").Survey({ model: survey });
+                    // Rendu dans l'élément injecté
+                    $("#surveyElement").Survey({ model: survey });
                 })
                 .catch(err => {
                     console.error(err);
-                    document.getElementById('surveyContainer').innerHTML = "<div class='loading-state'>Impossible de charger le questionnaire.</div>";
+                    const el = document.getElementById('surveyElement');
+                    if(el) el.innerHTML = "<div class='loading-state'>Impossible de charger le questionnaire.</div>";
                 });
         })();
     </script>

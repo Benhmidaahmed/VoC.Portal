@@ -1,32 +1,23 @@
-using System.Diagnostics;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
 using Xrmbox.VoC.Portal.Models;
 
 namespace Xrmbox.VoC.Portal.Controllers
 {
+    [Authorize] // Ajoutez ceci pour forcer la connexion sur tout le contrôleur
     public class HomeController : Controller
     {
-        private readonly ILogger<HomeController> _logger;
-
-        public HomeController(ILogger<HomeController> logger)
-        {
-            _logger = logger;
-        }
-
         public IActionResult Index()
         {
-            return View();
-        }
+            // Si c'est un Admin, on le redirige immédiatement vers l'espace Admin
+            if (User.IsInRole("Admin") || User.IsInRole("SuperAdmin"))
+            {
+                return RedirectToAction("Index", "Admin");
+            }
 
-        public IActionResult Privacy()
-        {
+            // Pour les autres utilisateurs connectés (s'il y en a)
             return View();
-        }
-
-        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-        public IActionResult Error()
-        {
-            return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
         }
     }
 }

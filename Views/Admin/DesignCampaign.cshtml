@@ -1,0 +1,89 @@
+﻿@model Xrmbox.VoC.Portal.Models.Local.Campaign
+
+@{
+    ViewData["Title"] = "Configuration du Design - " + (Model?.Name ?? "Campagne");
+}
+
+<div class="container-fluid py-4">
+    <div class="row mb-3 align-items-center">
+        <div class="col-md-6">
+            <h3 class="m-0 text-primary"><i class="fas fa-paint-brush me-2"></i>Design : @Model.Name</h3>
+        </div>
+        <div class="col-md-6 text-end">
+            <button id="btn-save" class="btn btn-success px-4 me-2" onclick="window.saveEditorData()">
+                <i class="fas fa-save me-1"></i> Enregistrer
+            </button>
+            <a class="btn btn-outline-secondary" href="@Url.Action("ListCampaignsToDesign", "Admin")">Retour</a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 mb-3" style="border-left: 5px solid #0d6efd !important;">
+                <div class="card-body">
+                    <h5 class="card-title text-primary"><i class="fas fa-lightbulb me-2"></i>Astuce SurveyJS</h5>
+                    <p class="card-text small text-muted">Pour intégrer votre questionnaire dynamique :</p>
+                    <ol class="small">
+                        <li>Glissez un bloc <b>HTML</b>.</li>
+                        <li>Collez le code : <code class="bg-light p-1 d-block mt-1">{{SURVEY_HERE}}</code></li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-9">
+            <div id="editor-wrapper" style="background:#fff; border-radius:10px; border:1px solid #e6eaef; height: 80vh; overflow: hidden;">
+                <div id="editorjs" style="height: 100%;"></div>
+            </div>
+        </div>
+    </div>
+
+    <form id="antiforgery-form" style="display:none">
+        @Html.AntiForgeryToken()
+    </form>
+</div>
+
+@section Scripts {
+    <script src="https://editor.unlayer.com/embed.js?2"></script>
+    <script>
+        (() => {
+            "use strict";
+            unlayer.init({ id: "editorjs", displayMode: "web", locale: "fr-FR" });
+
+            unlayer.addEventListener("editor:ready", () => {
+                @if (!string.IsNullOrEmpty(Model?.PageDesignHtml))
+                {
+                        <text>
+                        // On récupère le JSON stocké en base
+                        const rawDesign = @Html.Raw(Model.PageDesignHtml);
+                        unlayer.loadDesign(rawDesign);
+                        </text>
+                }
+            });
+
+            window.saveEditorData = function() {
+                const btn = document.getElementById('btn-save');
+                btn.disabled = true;
+
+                unlayer.exportHtml(function(data) {
+                    const payload = {
+                        id: "@Model.DataverseId",
+                        designHtml: data.html, // Le HTML pour le client final
+                        designJson: JSON.stringify(data.design) // Le JSON pour l'éditeur
+                    };
+
+                    fetch("@Url.Action("SaveCampaignDesign", "Admin")", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
+                        },
+                        body: JSON.stringify(payload)
+                    })
+                    .then(r => r.ok ? alert("Enregistré !") : alert("Erreur serveur"))
+                    .finally(() => btn.disabled = false);
+                });
+            };
+        })();
+    </script>
+}

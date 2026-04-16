@@ -1,0 +1,29 @@
+﻿@model IEnumerable<Xrmbox.VoC.Portal.Models.Local.Campaign>
+
+<div class="container mt-4">
+    <h2>Sélectionnez une campagne à personnaliser</h2>
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Nom de la Campagne</th>
+                <th>Dernière Synchro</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td>@item.Name</td>
+                    <td>@item.LastSync.ToString("g")</td>
+                    <td>
+                        <a asp-action="DesignCampaign" asp-route-id="@item.DataverseId" class="btn btn-sm btn-outline-primary">
+                            <span class="icon"><ion-icon name="brush-outline"></ion-icon></span>
+                            Designer le portail
+                        </a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

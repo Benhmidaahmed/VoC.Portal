@@ -1,10 +1,11 @@
-using System;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Xrmbox.VoC.Portal.Services;
+using System;
+using System.Threading.Tasks;
 using Xrmbox.VoC.Portal.Data;
 using Xrmbox.VoC.Portal.Models.Local;
+using Xrmbox.VoC.Portal.Services;
 
 namespace Xrmbox.VoC.Portal.Controllers
 
@@ -146,47 +147,51 @@ namespace Xrmbox.VoC.Portal.Controllers
         }
 
         // Cette action répondra à : /Survey/Fill?token=...
-        [HttpGet]
-        [HttpGet]
+        // Ajoutez cet attribut en haut de la classe ou juste sur l'action
+
+
+        [AllowAnonymous]
         [HttpGet]
         public async Task<IActionResult> Fill(Guid token)
         {
-            if (token == Guid.Empty) return RedirectToAction("Index", "Home");
+            if (token == Guid.Empty) return View("SurveyError");
 
-            try
+            // 1. Trouver l'invitation
+            var invitation = await _dbContext.SurveyInvitations
+                .SingleOrDefaultAsync(i => i.Token == token);
+
+            if (invitation == null || invitation.IsUsed || invitation.ExpirationDate <= DateTime.Now)
             {
-                var invitation = await _dbContext.SurveyInvitations
-                    .AsNoTracking()
-                    .SingleOrDefaultAsync(i => i.Token == token);
+                return View("SurveyError");
+            }
 
-                if (invitation == null || invitation.IsUsed || invitation.ExpirationDate <= DateTime.Now)
+            // 2. Récupérer les infos (Assurez-vous que ce n'est pas utilisé tel quel dans LINQ si c'est dynamic)
+            var surveyContext = _dataverseService.GetSurveyContextInfo(invitation.ParticipantDataverseId);
+
+            // 3. RÉCUPÉRER LE DESIGN DE LA CAMPAGNE
+            if (surveyContext != null)
+            {
+                // CORRECTION : On extrait l'ID dans une variable locale de type Guid
+                // Cela évite l'utilisation du type 'dynamic' dans l'expression LINQ
+                Guid campagneId = (Guid)surveyContext.CampagneId;
+
+                if (campagneId != Guid.Empty)
                 {
-                    return RedirectToAction("Index", "Home");
+                    var campagne = await _dbContext.Campaigns
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(c => c.DataverseId == campagneId); // Utilisation de la variable typée
+
+                    ViewBag.PageDesignHtml = campagne?.PageDesignHtml;
+                    ViewBag.CampagneId = campagneId;
                 }
 
-                var context = _dataverseService.GetSurveyContextInfo(invitation.ParticipantDataverseId);
-
-                // --- AJOUT CRUCIAL ICI ---
-                // On va chercher si une réponse partielle existe déjà pour ce token
-                var existingResponse = await _dbContext.LocalResponses
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(r => r.Token == token);
-
-                // On passe le JSON à la vue (si null, on passe "null" en string pour le JS)
-                ViewBag.SavedData = existingResponse?.ResponseJson;
-                // -------------------------
-
-                ViewBag.ParticipantId = invitation.ParticipantDataverseId;
-                ViewBag.Token = invitation.Token;
-                ViewBag.SurveyId = context.SurveyId?.ToString() ?? string.Empty;
-                ViewBag.CampagneId = context.CampagneId?.ToString() ?? string.Empty;
-
-                return View("Index");
+                ViewBag.SurveyId = surveyContext.SurveyId.ToString() ?? string.Empty;
             }
-            catch (Exception ex)
-            {
-                return RedirectToAction("Index", "Home");
-            }
+
+            ViewBag.ParticipantId = invitation.ParticipantDataverseId;
+            ViewBag.Token = invitation.Token;
+
+            return View("Index");
         }
 
         // POST: /Survey/SavePartial

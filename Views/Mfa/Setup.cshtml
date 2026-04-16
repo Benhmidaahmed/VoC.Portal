@@ -19,21 +19,16 @@
                 </div>
             </div>
 
-            <form asp-controller="Mfa" asp-action="Verify" method="post" class="text-start">
-                @Html.AntiForgeryToken()
-                <div class="mb-3">
-                    <label for="code" class="form-label">Code à 6 chiffres</label>
-                    <input type="text"
-                           id="code"
-                           name="code"
-                           class="form-control"
-                           maxlength="6"
-                           inputmode="numeric"
-                           autocomplete="one-time-code"
-                           placeholder="123456"
-                           required />
+            <form asp-action="Verify" method="post">
+                <input type="hidden"
+                       name="returnUrl"
+                       value="@ViewContext.HttpContext.Request.Query["returnUrl"]" />
+
+                <div class="form-group">
+                    <label>Code de vérification</label>
+                    <input name="code" class="form-control" autocomplete="off" />
                 </div>
-                <button type="submit" class="btn btn-primary w-100">Valider</button>
+                <button type="submit" class="btn btn-primary">Vérifier</button>
             </form>
         </div>
     </div>

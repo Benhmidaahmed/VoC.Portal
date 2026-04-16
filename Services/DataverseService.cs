@@ -32,7 +32,6 @@ namespace Xrmbox.VoC.Portal.Services
             if (configuration == null) throw new ArgumentNullException(nameof(configuration));
             if (dbContext == null) throw new ArgumentNullException(nameof(dbContext));
 
-            // Lire proprement la chaîne de connexion et s'assurer qu'une "Authority" est présente
             var conn = configuration["Dataverse:ConnectionString"] ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(conn))
@@ -40,7 +39,6 @@ namespace Xrmbox.VoC.Portal.Services
                 throw new InvalidOperationException("La clé Dataverse:ConnectionString est requise dans la configuration.");
             }
 
-            // Si l'Authority n'est pas fournie, on l'ajoute à partir du TenantId AzureAd si disponible
             if (!conn.Contains("Authority=", StringComparison.OrdinalIgnoreCase))
             {
                 var tenantId = configuration["AzureAd:TenantId"];
@@ -48,7 +46,6 @@ namespace Xrmbox.VoC.Portal.Services
                     ? $"https://login.microsoftonline.com/{tenantId}"
                     : "https://login.microsoftonline.com/common";
 
-                // Veiller à terminer par ';'
                 if (!conn.EndsWith(";", StringComparison.Ordinal))
                 {
                     conn += ";";
@@ -57,7 +54,6 @@ namespace Xrmbox.VoC.Portal.Services
                 conn += $"Authority={authority};";
             }
 
-            // Initialisation du ServiceClient après avoir assuré la présence de l'Authority
             _client = new ServiceClient(conn);
             if (!_client.IsReady)
             {
@@ -227,38 +223,44 @@ namespace Xrmbox.VoC.Portal.Services
         {
             if (local == null) throw new ArgumentNullException(nameof(local));
 
-            // Nom logique de la table de destination
             const string entityName = "xrmbox_reponsedesatisfaction";
             var dtEntity = new Entity(entityName);
 
             try
             {
+                // On définit le nom de la réponse
                 dtEntity["xrmbox_name"] = local.Name;
 
-                // 1. Lien vers le Questionnaire
-                dtEntity["xrmbox_questionnairedesatisfaction"] = new EntityReference("xrmbox_questionnairedesatisfaction", local.SurveyId);
+                // 1. Lien vers le Questionnaire (Lookup)
+                dtEntity["xrmbox_questionnairedesatisfaction"] =
+                    new EntityReference("xrmbox_questionnairedesatisfaction", local.SurveyId);
 
-                // 2. Lien vers le Participant (FIX APPLIQUÉ ICI)
+                // 2. Lien vers le Participant (Lookup)
                 if (local.ParticipantId.HasValue && local.ParticipantId.Value != Guid.Empty)
                 {
-                    // On utilise le nom logique du champ : xrmbox_participant
-                    // Mais la table cible reste : xrmbox_participantalacampagne
-                    dtEntity["xrmbox_participant"] = new EntityReference("xrmbox_participantalacampagne", local.ParticipantId.Value);
+                    dtEntity["xrmbox_participant"] =
+                        new EntityReference("xrmbox_participantalacampagne", local.ParticipantId.Value);
                 }
 
-                // 3. Lien vers la Campagne
+                // 3. Lien vers la Campagne (Lookup)
                 if (local.CampagneId.HasValue && local.CampagneId.Value != Guid.Empty)
                 {
-                    dtEntity["xrmbox_campagnedesatisfaction"] = new EntityReference("xrmbox_campagnedesatisfaction", local.CampagneId.Value);
+                    dtEntity["xrmbox_campagnedesatisfaction"] =
+                        new EntityReference("xrmbox_campagnedesatisfaction", local.CampagneId.Value);
                 }
 
-                // 4. Données JSON du sondage (SurveyJS)
+                // 4. Données JSON du sondage (SurveyJS) 
+                // Assurez-vous que ce nom logique est correct dans Dataverse
                 dtEntity["cr7a2_reponsesjson"] = local.ResponseJson;
+
+                // --- MODIFICATION ICI : SUPPRESSION DU BLOC "ÉTAPE 5" ---
+                // On ne cherche plus la campagne dans le dbContext pour copier son HTML ici.
+                // Cela évite l'erreur "entity doesn't contain attribute cr7a2_pagedesignhtml".
 
                 // Envoi vers Dataverse
                 var createdId = _client.Create(dtEntity);
 
-                // Mise à jour SQL locale si succès
+                // Mise à jour de l'état local après succès
                 local.IsSynced = true;
                 local.DataverseId = createdId.ToString();
                 local.SyncError = null;
@@ -270,7 +272,7 @@ namespace Xrmbox.VoC.Portal.Services
             }
             catch (Exception ex)
             {
-                // Enregistrement de l'erreur dans SQL pour debug
+                // En cas d'échec, on enregistre l'erreur localement pour pouvoir retenter plus tard
                 local.IsSynced = false;
                 local.SyncError = ex.Message;
 
@@ -278,6 +280,23 @@ namespace Xrmbox.VoC.Portal.Services
                 _dbContext.SaveChanges();
 
                 Console.WriteLine($"[Sync Error] {ex.Message}");
+            }
+        }
+        public void UpdateCampaignDesign(Guid campaignId, string html)
+        {
+            // On cible l'entité Campagne, car c'est ELLE qui possède la colonne de design
+            var entity = new Entity("xrmbox_campagnedesatisfaction", campaignId);
+
+            entity["cr7a2_pagedesignhtml"] = html;
+
+            try
+            {
+                _client.Update(entity);
+                Console.WriteLine("Design de la campagne mis à jour avec succès.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Erreur lors de la mise à jour du design : {ex.Message}");
             }
         }
 
@@ -309,7 +328,34 @@ namespace Xrmbox.VoC.Portal.Services
             // 3. On sauvegarde tout à la fin
             _dbContext.SaveChanges();
         }
+        /// <summary>
+        /// Récupère les détails de design d'une campagne depuis Dataverse.
+        /// </summary>
+        public void SyncCampaignDesignFromDataverse(Guid campaignId)
+        {
+            try
+            {
+                // On récupère les colonnes de design depuis Dataverse
+                var entity = _client.Retrieve("xrmbox_campagnedesatisfaction", campaignId,
+                    new ColumnSet("cr7a2_pagedesignhtml", "cr7a2_couleurprimaire"));
 
+                if (entity != null)
+                {
+                    var localCampaign = _dbContext.Campaigns.Find(campaignId);
+                    if (localCampaign != null)
+                    {
+                        localCampaign.PageDesignHtml = entity.GetAttributeValue<string>("cr7a2_pagedesignhtml");
+                        localCampaign.CouleurPrimaire = entity.GetAttributeValue<string>("cr7a2_couleurprimaire");
+
+                        _dbContext.SaveChanges();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Dataverse Error] Erreur synchro design : {ex.Message}");
+            }
+        }
 
         /// <summary>
         /// Enregistre la réponse localement, tente la synchronisation immédiate puis retourne l'ID local (int) ou l'ID Dataverse (GUID) sous forme de chaîne.

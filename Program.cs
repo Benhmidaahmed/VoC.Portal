@@ -96,11 +96,23 @@ app.Use(async (context, next) =>
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.Use(async (context, next) =>
+{
+    // On ajoute l'URL ngrok et on retire l'expression [::1] qui cause l'erreur de syntaxe
+    context.Response.Headers.Add("Content-Security-Policy",
+        "frame-ancestors 'self' https://*.unlayer.com https://hylotheistical-unepauletted-aide.ngrok-free.dev; " +
+        "frame-src 'self' https://*.unlayer.com; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.unlayer.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com;");
 
+    await next();
+});
 // --- ROUTES ---
-app.MapControllerRoute(
+//app.MapControllerRoute(
+//    name: "default",
+//    pattern: "{controller=Home}/{action=Index}/{id?}");
+app.MapControllerRoute(     
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
+    pattern: "{controller=Admin}/{action=Index}/{id?}");
 
 app.MapRazorPages();
 

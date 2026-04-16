@@ -2,18 +2,19 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities; // Pour WebEncoders
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc.Filters; // Ajoutez cette ligne
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Text; // Pour Encoding
 using System.Threading.Tasks;
 using Xrmbox.VoC.Portal.Data;
 using Xrmbox.VoC.Portal.Models;
 using Xrmbox.VoC.Portal.Models.Local;
 using Xrmbox.VoC.Portal.Services;
-using Microsoft.AspNetCore.WebUtilities; // Pour WebEncoders
-using System.Text; // Pour Encoding
 
 namespace Xrmbox.VoC.Portal.Controllers
 {
@@ -36,14 +37,26 @@ namespace Xrmbox.VoC.Portal.Controllers
             IEmailSender emailSender)
         {
             _emailService = emailService ?? throw new ArgumentNullException(nameof(emailService));
-            _dataverse_service_check: _ = dataverseService ?? throw new ArgumentNullException(nameof(dataverseService));
+            _ = dataverseService ?? throw new ArgumentNullException(nameof(dataverseService));
             _dataverseService = dataverseService;
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             _userManager = userManager ?? throw new ArgumentNullException(nameof(userManager));
             _roleManager = roleManager ?? throw new ArgumentNullException(nameof(roleManager));
             _emailSender = emailSender ?? throw new ArgumentNullException(nameof(emailSender));
         }
+        // Ajoutez cette méthode ou utilisez un ActionFilter
+        public override void OnActionExecuting(ActionExecutingContext context)
+        {
+            var user = _userManager.GetUserAsync(User).Result;
 
+            // Si c'est un Admin/SuperAdmin et que le 2FA n'est pas activé en base
+            if (user != null && !user.TwoFactorEnabled)
+            {
+                context.Result = RedirectToAction("Setup", "Mfa");
+            }
+
+            base.OnActionExecuting(context);
+        }
         // GET: /Admin/Index
         [Authorize(Roles = "Admin,SuperAdmin")]
         public async Task<IActionResult> Index()
@@ -102,6 +115,7 @@ namespace Xrmbox.VoC.Portal.Controllers
             return View();
         }
 
+        // Remplacement de la méthode CreateAdmin (POST) avec TwoFactorEnabled = false et token encodé via WebEncoders
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Roles = "SuperAdmin")]
@@ -143,7 +157,8 @@ namespace Xrmbox.VoC.Portal.Controllers
                 {
                     UserName = email,
                     Email = email,
-                    EmailConfirmed = true
+                    EmailConfirmed = true,
+                    TwoFactorEnabled = false // Permettre la première connexion sans QR Code configuré
                 };
 
                 var createResult = await _userManager.CreateAsync(user, tempPassword);
@@ -183,21 +198,15 @@ namespace Xrmbox.VoC.Portal.Controllers
                     return RedirectToAction("CreateAdmin");
                 }
 
-                // Générer un token de reset et construire le lien vers la page Razor Identity ResetPassword
-                // 1. Générer le token brut
+                // Générer un token de reset et construire le lien vers la page Identity ResetPassword
                 var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
-
-                // 2. Encoder le token en Base64Url (C'est la méthode recommandée par Microsoft pour Identity)
                 var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(resetToken));
-
-                // 3. Construire le lien vers la page Identity
                 var resetLink = Url.Page(
                     "/Account/ResetPassword",
                     pageHandler: null,
                     values: new { area = "Identity", code = encodedToken, email = user.Email },
                     protocol: Request.Scheme);
 
-                // 4. Envoyer l'email (Le reste de votre code ne change pas)
                 var subject = "Invitation administrateur - Xrmbox";
                 var htmlMessage = $"Bonjour,<br/><br>Un compte administrateur a été créé pour vous.<br/>" +
                                   $"Veuillez définir votre mot de passe en cliquant sur le lien suivant : <a href=\"{resetLink}\">Définir le mot de passe</a><br/><br>Merci.";
@@ -324,7 +333,57 @@ namespace Xrmbox.VoC.Portal.Controllers
                 return RedirectToAction("Index");
             }
         }
+        // 1. Affiche l'éditeur Unlayer
+        [HttpGet]
+        public IActionResult DesignCampaign(Guid id)
+        {
+            var campaign = _dbContext.Campaigns.FirstOrDefault(c => c.DataverseId == id);
+            if (campaign == null) return NotFound();
 
+            return View(campaign);
+        }
+
+        // 2. Reçoit le HTML d'Unlayer et sauvegarde
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        // Dans AdminController.cs
+        [HttpPost]
+        public async Task<IActionResult> SaveCampaignDesign([FromBody] CampaignDesignDto model)
+        {
+            if (model == null || model.Id == Guid.Empty) return BadRequest();
+
+            var campaign = await _dbContext.Campaigns.FirstOrDefaultAsync(c => c.DataverseId == model.Id);
+            if (campaign == null) return NotFound();
+
+            // ERREUR CORRIGÉE ICI : 
+            // On utilise DesignHtml pour l'affichage client (PageDesignHtml)
+            campaign.PageDesignHtml = model.DesignHtml;
+
+            // Si vous avez une colonne pour le JSON, stockez model.DesignJson dedans pour le recharger dans l'éditeur
+            // campaign.DesignJson = model.DesignJson; 
+
+            await _dbContext.SaveChangesAsync();
+            return Ok();
+        }
+
+        public class CampaignDesignDto
+        {
+            public Guid Id { get; set; }
+            public string DesignHtml { get; set; }
+            public string DesignJson { get; set; }
+        }
+        // Classe d'aide pour la requête AJAX
+        public class DesignSaveRequest
+        {
+            public Guid CampaignId { get; set; }
+            public string Html { get; set; }
+        }
+        public IActionResult ListCampaignsToDesign()
+        {
+            // On récupère la liste des campagnes stockées localement
+            var campaigns = _dbContext.Campaigns.ToList();
+            return View(campaigns);
+        }
         [HttpGet]
         public async Task<IActionResult> Fill(Guid token)
         {
