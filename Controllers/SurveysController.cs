@@ -165,21 +165,27 @@ namespace Xrmbox.VoC.Portal.Controllers
                 return View("SurveyError");
             }
 
-            // 2. Récupérer les infos (Assurez-vous que ce n'est pas utilisé tel quel dans LINQ si c'est dynamic)
+            // --- NOUVELLE LOGIQUE : Récupérer le brouillon s'il existe ---
+            var existingResponse = await _dbContext.LocalResponses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Token == token);
+
+            // On stocke le JSON dans ViewBag pour le JavaScript
+            // Si pas de réponse, on envoie "null" ou un objet vide "{}"
+            ViewBag.SavedData = existingResponse?.ResponseJson ?? "null";
+            // -----------------------------------------------------------
+
+            // 2. Récupérer les infos Dataverse
             var surveyContext = _dataverseService.GetSurveyContextInfo(invitation.ParticipantDataverseId);
 
-            // 3. RÉCUPÉRER LE DESIGN DE LA CAMPAGNE
             if (surveyContext != null)
             {
-                // CORRECTION : On extrait l'ID dans une variable locale de type Guid
-                // Cela évite l'utilisation du type 'dynamic' dans l'expression LINQ
                 Guid campagneId = (Guid)surveyContext.CampagneId;
-
                 if (campagneId != Guid.Empty)
                 {
                     var campagne = await _dbContext.Campaigns
                         .AsNoTracking()
-                        .FirstOrDefaultAsync(c => c.DataverseId == campagneId); // Utilisation de la variable typée
+                        .FirstOrDefaultAsync(c => c.DataverseId == campagneId);
 
                     ViewBag.PageDesignHtml = campagne?.PageDesignHtml;
                     ViewBag.CampagneId = campagneId;

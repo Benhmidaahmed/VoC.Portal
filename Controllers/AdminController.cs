@@ -346,24 +346,36 @@ namespace Xrmbox.VoC.Portal.Controllers
         // 2. Reçoit le HTML d'Unlayer et sauvegarde
         [HttpPost]
         [ValidateAntiForgeryToken]
-        // Dans AdminController.cs
-        [HttpPost]
         public async Task<IActionResult> SaveCampaignDesign([FromBody] CampaignDesignDto model)
         {
             if (model == null || model.Id == Guid.Empty) return BadRequest();
 
-            var campaign = await _dbContext.Campaigns.FirstOrDefaultAsync(c => c.DataverseId == model.Id);
+            var campaign = await _dbContext.Campaigns
+                .FirstOrDefaultAsync(c => c.DataverseId == model.Id);
+
             if (campaign == null) return NotFound();
 
-            // ERREUR CORRIGÉE ICI : 
-            // On utilise DesignHtml pour l'affichage client (PageDesignHtml)
+            // 1. ✅ Sauvegarde locale : on garde l'HTML ET le JSON (si tu as ajouté la colonne)
             campaign.PageDesignHtml = model.DesignHtml;
 
-            // Si vous avez une colonne pour le JSON, stockez model.DesignJson dedans pour le recharger dans l'éditeur
-            // campaign.DesignJson = model.DesignJson; 
+            // Si tu as ajouté la colonne PageDesignJson dans ta table, décommente cette ligne :
+            // campaign.PageDesignJson = model.DesignJson; 
 
             await _dbContext.SaveChangesAsync();
-            return Ok();
+
+            // 2. ✅ Synchronisation vers Dataverse : On envoie l'HTML (model.DesignHtml)
+            try
+            {
+                // C'est ici le changement principal : on passe DesignHtml au lieu de DesignJson
+                await _dataverseService.UpdateCampaignDesignAsync(model.Id, model.DesignHtml);
+            }
+            catch (Exception ex)
+            {
+                // Local sauvegardé, mais Dataverse a échoué
+                return Ok(new { warning = $"Enregistré localement, Dataverse non synchronisé : {ex.Message}" });
+            }
+
+            return Ok(new { message = "Design HTML enregistré et synchronisé vers Dataverse avec succès." });
         }
 
         public class CampaignDesignDto

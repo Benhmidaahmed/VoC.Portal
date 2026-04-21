@@ -17,6 +17,7 @@ namespace Xrmbox.VoC.Portal.Data
         public DbSet<IntegrationLog> IntegrationLogs { get; set; } = null!;
         public DbSet<Survey> Surveys { get; set; }
         public DbSet<Campaign> Campaigns { get; set; }
+        public DbSet<CampaignEmail> CampaignEmails { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -116,19 +117,31 @@ namespace Xrmbox.VoC.Portal.Data
             logEntity.Property(e => e.Message)
                 .IsRequired(false)
                 .HasMaxLength(2000);
-            modelBuilder.Entity<Survey>()
-    .HasAlternateKey(s => s.DataverseId);
 
-            // 2. On configure la relation dans la table Campaign
+            modelBuilder.Entity<Survey>()
+                .HasAlternateKey(s => s.DataverseId);
+
+            // Campaign configuration
             modelBuilder.Entity<Campaign>(entity =>
             {
-                entity.HasKey(e => e.DataverseId); // Clé primaire sur le Guid Dataverse
+                entity.HasKey(e => e.DataverseId);
 
                 entity.HasOne(c => c.Survey)
                     .WithMany()
-                    .HasPrincipalKey(s => s.DataverseId) // La cible est le Guid de Survey
-                    .HasForeignKey(c => c.SurveyDataverseId) // La source est le Guid dans Campaign
+                    .HasPrincipalKey(s => s.DataverseId)
+                    .HasForeignKey(c => c.SurveyDataverseId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // CampaignEmail configuration + relation one-to-many
+            modelBuilder.Entity<CampaignEmail>(entity =>
+            {
+                entity.HasKey(ce => ce.DataverseId);
+
+                entity.HasOne<Campaign>()
+                    .WithMany(c => c.Emails)
+                    .HasForeignKey(ce => ce.CampaignId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

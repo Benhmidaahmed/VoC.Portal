@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
@@ -20,7 +21,7 @@ namespace Xrmbox.VoC.Portal.Services
     }
 
     public record CampaignDto(Guid Id, string Name);
-    public record ParticipantDto(Guid Id, string? Email);
+    public record ParticipantDto(Guid Id, string? Email, string? ClientName);
 
     public partial class DataverseService : IDisposable
     {
@@ -190,7 +191,7 @@ namespace Xrmbox.VoC.Portal.Services
             {
                 var query = new QueryExpression("xrmbox_participantalacampagne")
                 {
-                    ColumnSet = new ColumnSet("xrmbox_participantalacampagneid", "xrmbox_adressecourriel"),
+                    ColumnSet = new ColumnSet("xrmbox_participantalacampagneid", "xrmbox_adressecourriel", "cr7a2_prenom"),
                     Criteria = new FilterExpression()
                 };
 
@@ -200,7 +201,9 @@ namespace Xrmbox.VoC.Portal.Services
                 return results.Entities
                     .Select(e => new ParticipantDto(
                         e.Id,
-                        e.GetAttributeValue<string>("xrmbox_adressecourriel")))
+                        e.GetAttributeValue<string>("xrmbox_adressecourriel"),
+                        e.GetAttributeValue<string>("cr7a2_prenom")))
+
                     .ToList();
             }
             catch (Exception ex)
@@ -284,9 +287,7 @@ namespace Xrmbox.VoC.Portal.Services
         }
         public void UpdateCampaignDesign(Guid campaignId, string html)
         {
-            // On cible l'entité Campagne, car c'est ELLE qui possède la colonne de design
             var entity = new Entity("xrmbox_campagnedesatisfaction", campaignId);
-
             entity["cr7a2_pagedesignhtml"] = html;
 
             try
@@ -297,7 +298,14 @@ namespace Xrmbox.VoC.Portal.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"Erreur lors de la mise à jour du design : {ex.Message}");
+                throw;
             }
+        }
+
+        public Task UpdateCampaignDesignAsync(Guid campaignId, string html)
+        {
+            UpdateCampaignDesign(campaignId, html);
+            return Task.CompletedTask;
         }
 
         public void SyncPendingResponses()
@@ -329,143 +337,194 @@ namespace Xrmbox.VoC.Portal.Services
             _dbContext.SaveChanges();
         }
         /// <summary>
-        /// Récupère les détails de design d'une campagne depuis Dataverse.
+        /// Récupère les détails de design d'une campagne depuis Dataverse,
+        /// ainsi que ses emails de campagne.
         /// </summary>
-        public void SyncCampaignDesignFromDataverse(Guid campaignId)
+         public void DesignFromDataverse(Guid campaignId)
         {
             try
             {
-                // On récupère les colonnes de design depuis Dataverse
-                var entity = _client.Retrieve("xrmbox_campagnedesatisfaction", campaignId,
+                // 1) Récupération des champs design de la campagne (logique inchangée)
+                var campaignEntity = _client.Retrieve(
+                    "xrmbox_campagnedesatisfaction",
+                    campaignId,
                     new ColumnSet("cr7a2_pagedesignhtml", "cr7a2_couleurprimaire"));
 
-                if (entity != null)
-                {
-                    var localCampaign = _dbContext.Campaigns.Find(campaignId);
-                    if (localCampaign != null)
-                    {
-                        localCampaign.PageDesignHtml = entity.GetAttributeValue<string>("cr7a2_pagedesignhtml");
-                        localCampaign.CouleurPrimaire = entity.GetAttributeValue<string>("cr7a2_couleurprimaire");
+                // 2) Chargement de la campagne locale + collection Emails
+                var localCampaign = _dbContext.Campaigns
+                    .Include(c => c.Emails)
+                    .FirstOrDefault(c => c.DataverseId == campaignId);
 
-                        _dbContext.SaveChanges();
+                if (localCampaign == null)
+                {
+                    return;
+                }
+
+                // Mise à jour des champs design (logique inchangée)
+                if (campaignEntity != null)
+                {
+                    localCampaign.PageDesignHtml = campaignEntity.GetAttributeValue<string>("cr7a2_pagedesignhtml");
+                    localCampaign.CouleurPrimaire = campaignEntity.GetAttributeValue<string>("cr7a2_couleurprimaire");
+                }
+
+                // 3) Récupération des emails liés à la campagne
+                var emailQuery = new QueryExpression("cr7a2_emaildecampagne")
+                {
+                    ColumnSet = new ColumnSet(
+                        "cr7a2_emaildecampagneid",
+                        "cr7a2_objet",
+                        "cr7a2_contenu",
+                        "cr7a2_role",
+                        "cr7a2_delai")
+                };
+                emailQuery.Criteria.AddCondition("cr7a2_campagne", ConditionOperator.Equal, campaignId);
+
+                var emailResults = _client.RetrieveMultiple(emailQuery);
+
+                // Sécurité : aucun résultat Dataverse exploitable
+                if (emailResults?.Entities == null)
+                {
+                    _dbContext.SaveChanges();
+                    return;
+                }
+
+                // 4) Suppression des anciens emails pour éviter les doublons
+                _dbContext.CampaignEmails.RemoveRange(localCampaign.Emails);
+
+                // 5) Ajout des emails Dataverse
+                foreach (var emailEntity in emailResults.Entities)
+                {
+                    var campaignEmail = new CampaignEmail
+                    {
+                        DataverseId = emailEntity.Id,
+                        Subject = emailEntity.GetAttributeValue<string>("cr7a2_objet") ?? string.Empty,
+                        Body = emailEntity.GetAttributeValue<string>("cr7a2_contenu") ?? string.Empty,
+                        Role = emailEntity.GetAttributeValue<OptionSetValue>("cr7a2_role")?.Value ?? 0,
+                        DelayDays = emailEntity.GetAttributeValue<int?>("cr7a2_delai"),
+                        CampaignId = localCampaign.DataverseId
+                    };
+
+                    _dbContext.CampaignEmails.Add(campaignEmail);
+                }
+
+                // 6) Sauvegarde finale
+                _dbContext.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Dataverse Error] Erreur synchro design/emails : {ex.Message}");
+            }
+        }
+
+                /// <summary>
+                /// Enregistre la réponse localement, tente la synchronisation immédiate puis retourne l'ID local (int) ou l'ID Dataverse (GUID) sous forme de chaîne.
+                /// </summary>
+                public string SubmitResponse(Xrmbox.VoC.Portal.Models.SubmitResponseRequest req)
+                {
+                    if (req == null) throw new ArgumentNullException(nameof(req));
+
+                    if (req.SurveyId == Guid.Empty) throw new ArgumentException("SurveyId requis");
+                    if (string.IsNullOrWhiteSpace(req.ResponseJson)) throw new ArgumentException("ResponseJson requis");
+
+                    // Gestion propre de l'ID de campagne
+                    Guid? campagneGuid = null;
+                    if (req.CampagneId.HasValue && req.CampagneId.Value != Guid.Empty)
+                    {
+                        campagneGuid = req.CampagneId.Value;
+                    }
+
+                    // 1. Construction de l'objet local
+                    // Note : On force IsCompleted = true car cette méthode est appelée lors du onComplete
+                    var local = new LocalResponse
+                    {
+                        Name = "Réponse Portail - " + DateTime.Now.ToString("g"),
+                        SurveyId = req.SurveyId,
+                        ParticipantId = req.ParticipantId,
+                        CampagneId = campagneGuid,
+                        ResponseJson = req.ResponseJson,
+                        SubmittedAt = DateTime.Now,
+                        IsSynced = false,
+                        DataverseId = null,
+                        SyncError = null,
+                        Token = req.Token ?? Guid.Empty,
+                        IsCompleted = true // CRUCIAL : On marque que c'est une réponse terminée
+                    };
+
+                    try
+                    {
+                        // 2. Sauvegarde en base de données locale (SQL)
+                        _dbContext.LocalResponses.Add(local);
+                        _dbContext.SaveChanges(); // On génère l'ID local ici
+
+                        // 3. Tentative de synchronisation vers Dataverse
+                        // On n'appelle QUE cette fonction pour cet enregistrement précis.
+                        SyncLocalResponseToDataverse(local);
+
+                        // --- CORRECTION : SUPPRESSION DE SyncPendingResponses() ICI ---
+                        // Appeler SyncPendingResponses() ici créait le doublon car il 
+                        // scannait la base avant que le premier cycle ne soit fini.
+
+                        // 4. Retourner l'ID de suivi (Dataverse si possible, sinon Local)
+                        if (local.IsSynced && !string.IsNullOrWhiteSpace(local.DataverseId))
+                        {
+                            return local.DataverseId;
+                        }
+
+                        return local.Id.ToString();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Dataverse Error] SubmitResponse failed: {ex.Message}");
+                        throw;
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Dataverse Error] Erreur synchro design : {ex.Message}");
-            }
-        }
 
-        /// <summary>
-        /// Enregistre la réponse localement, tente la synchronisation immédiate puis retourne l'ID local (int) ou l'ID Dataverse (GUID) sous forme de chaîne.
-        /// </summary>
-        public string SubmitResponse(Xrmbox.VoC.Portal.Models.SubmitResponseRequest req)
-        {
-            if (req == null) throw new ArgumentNullException(nameof(req));
-
-            if (req.SurveyId == Guid.Empty) throw new ArgumentException("SurveyId requis");
-            if (string.IsNullOrWhiteSpace(req.ResponseJson)) throw new ArgumentException("ResponseJson requis");
-
-            // Gestion propre de l'ID de campagne
-            Guid? campagneGuid = null;
-            if (req.CampagneId.HasValue && req.CampagneId.Value != Guid.Empty)
-            {
-                campagneGuid = req.CampagneId.Value;
-            }
-
-            // 1. Construction de l'objet local
-            // Note : On force IsCompleted = true car cette méthode est appelée lors du onComplete
-            var local = new LocalResponse
-            {
-                Name = "Réponse Portail - " + DateTime.Now.ToString("g"),
-                SurveyId = req.SurveyId,
-                ParticipantId = req.ParticipantId,
-                CampagneId = campagneGuid,
-                ResponseJson = req.ResponseJson,
-                SubmittedAt = DateTime.Now,
-                IsSynced = false,
-                DataverseId = null,
-                SyncError = null,
-                Token = req.Token ?? Guid.Empty,
-                IsCompleted = true // CRUCIAL : On marque que c'est une réponse terminée
-            };
-
-            try
-            {
-                // 2. Sauvegarde en base de données locale (SQL)
-                _dbContext.LocalResponses.Add(local);
-                _dbContext.SaveChanges(); // On génère l'ID local ici
-
-                // 3. Tentative de synchronisation vers Dataverse
-                // On n'appelle QUE cette fonction pour cet enregistrement précis.
-                SyncLocalResponseToDataverse(local);
-
-                // --- CORRECTION : SUPPRESSION DE SyncPendingResponses() ICI ---
-                // Appeler SyncPendingResponses() ici créait le doublon car il 
-                // scannait la base avant que le premier cycle ne soit fini.
-
-                // 4. Retourner l'ID de suivi (Dataverse si possible, sinon Local)
-                if (local.IsSynced && !string.IsNullOrWhiteSpace(local.DataverseId))
+                /// <summary>
+                /// Tente de récupérer l'ID du questionnaire (Survey) associé à un participant Dataverse
+                /// en suivant participant -> campagne -> questionnaire.
+                /// Retourne null si non trouvé.
+                /// </summary>
+                public dynamic GetSurveyContextInfo(Guid participantId)
                 {
-                    return local.DataverseId;
+                    if (participantId == Guid.Empty) return null;
+
+                    try
+                    {
+                        // 1) Récupérer le participant et son lien vers la campagne
+                        var participant = _client.Retrieve("xrmbox_participantalacampagne", participantId,
+                            new ColumnSet("xrmbox_campagnedesatisfaction"));
+
+                        var campRef = participant.GetAttributeValue<EntityReference>("xrmbox_campagnedesatisfaction");
+
+                        if (campRef == null)
+                        {
+                            Console.WriteLine("[DEBUG] Le participant n'est pas lié à une campagne.");
+                            return null;
+                        }
+
+                        // 2) Récupérer la campagne pour avoir l'ID du questionnaire (xrmbox_questionnaire)
+                        var campaign = _client.Retrieve("xrmbox_campagnedesatisfaction", campRef.Id,
+                            new ColumnSet("xrmbox_questionnaire"));
+
+                        var surveyRef = campaign.GetAttributeValue<EntityReference>("xrmbox_questionnaire");
+
+                        // On retourne un objet contenant les deux IDs
+                        return new
+                        {
+                            SurveyId = surveyRef?.Id,
+                            CampagneId = campRef.Id
+                        };
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Dataverse Error] GetSurveyContextInfo failed: {ex.Message}");
+                        return null;
+                    }
                 }
 
-                return local.Id.ToString();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Dataverse Error] SubmitResponse failed: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Tente de récupérer l'ID du questionnaire (Survey) associé à un participant Dataverse
-        /// en suivant participant -> campagne -> questionnaire.
-        /// Retourne null si non trouvé.
-        /// </summary>
-        public dynamic GetSurveyContextInfo(Guid participantId)
-        {
-            if (participantId == Guid.Empty) return null;
-
-            try
-            {
-                // 1) Récupérer le participant et son lien vers la campagne
-                var participant = _client.Retrieve("xrmbox_participantalacampagne", participantId,
-                    new ColumnSet("xrmbox_campagnedesatisfaction"));
-
-                var campRef = participant.GetAttributeValue<EntityReference>("xrmbox_campagnedesatisfaction");
-
-                if (campRef == null)
+                public void Dispose()
                 {
-                    Console.WriteLine("[DEBUG] Le participant n'est pas lié à une campagne.");
-                    return null;
+                    _client?.Dispose();
                 }
-
-                // 2) Récupérer la campagne pour avoir l'ID du questionnaire (xrmbox_questionnaire)
-                var campaign = _client.Retrieve("xrmbox_campagnedesatisfaction", campRef.Id,
-                    new ColumnSet("xrmbox_questionnaire"));
-
-                var surveyRef = campaign.GetAttributeValue<EntityReference>("xrmbox_questionnaire");
-
-                // On retourne un objet contenant les deux IDs
-                return new
-                {
-                    SurveyId = surveyRef?.Id,
-                    CampagneId = campRef.Id
-                };
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Dataverse Error] GetSurveyContextInfo failed: {ex.Message}");
-                return null;
             }
         }
-
-        public void Dispose()
-        {
-            _client?.Dispose();
-        }
-    }
-}
