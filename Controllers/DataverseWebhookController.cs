@@ -72,6 +72,125 @@ namespace Xrmbox.VoC.Portal.Controllers
 
 
 
+            // Synchronisation suppression Email (Delete Dataverse)
+            if (string.Equals(evt.MessageName, "Delete", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(evt.EntityType, "cr7a2_emaildecampagne", StringComparison.OrdinalIgnoreCase))
+            {
+                var emailToDelete = await _dbContext.CampaignEmails
+                    .FirstOrDefaultAsync(e => e.DataverseId == evt.EntityId);
+
+                if (emailToDelete != null)
+                {
+                    // Vérification des invitations liées (via la campagne de l'email)
+                    var hasLinkedInvitations = await _dbContext.SurveyInvitations
+                        .AnyAsync(i => i.CampaignDataverseId == emailToDelete.CampaignId);
+
+                    if (hasLinkedInvitations)
+                    {
+                        await TryAddLogAsync(
+                            "WebhookReceived",
+                            "Warning",
+                            $"Suppression annulée pour l'email {evt.EntityId} : des invitations liées existent.",
+                            "CampaignEmail");
+
+                        return Ok();
+                    }
+
+                    _dbContext.CampaignEmails.Remove(emailToDelete);
+                    await _dbContext.SaveChangesAsync();
+
+                    await TryAddLogAsync(
+                        "WebhookReceived",
+                        "Success",
+                        $"Email de campagne supprimé localement : {evt.EntityId}",
+                        "CampaignEmail");
+                }
+
+                return Ok();
+            }
+
+
+
+            // Synchronisation suppression Campagne (Delete Dataverse)
+
+            if (string.Equals(evt.MessageName, "Delete", StringComparison.OrdinalIgnoreCase)
+
+                && string.Equals(evt.EntityType, "xrmbox_campagnedesatisfaction", StringComparison.OrdinalIgnoreCase))
+
+            {
+
+                var campaignToDelete = await _dbContext.Campaigns
+
+                    .FirstOrDefaultAsync(c => c.DataverseId == evt.EntityId);
+
+
+
+                if (campaignToDelete != null)
+
+                {
+
+                    var relatedEmails = await _dbContext.CampaignEmails
+
+                        .Where(e => e.CampaignId == evt.EntityId)
+
+                        .ToListAsync();
+
+
+
+                    if (relatedEmails.Any())
+
+                    {
+
+                        _dbContext.CampaignEmails.RemoveRange(relatedEmails);
+
+                    }
+
+
+
+                    var relatedInvitations = await _dbContext.SurveyInvitations
+
+                        .Where(i => i.CampaignDataverseId == evt.EntityId)
+
+                        .ToListAsync();
+
+
+
+                    if (relatedInvitations.Any())
+
+                    {
+
+                        _dbContext.SurveyInvitations.RemoveRange(relatedInvitations);
+
+                    }
+
+
+
+                    _dbContext.Campaigns.Remove(campaignToDelete);
+
+                    await _dbContext.SaveChangesAsync();
+
+
+
+                    await TryAddLogAsync(
+
+                        "WebhookReceived",
+
+                        "Success",
+
+                        $"Campagne supprimée localement : {evt.EntityId}",
+
+                        "Campaign");
+
+                }
+
+
+
+                return Ok();
+
+            }
+
+
+
             try
 
             {
@@ -773,7 +892,7 @@ namespace Xrmbox.VoC.Portal.Controllers
             public string? JsonContent { get; set; }
 
             public string? Name { get; set; }
-
+            public string? MessageName { get; set; }
             public Guid? SurveyDataverseId { get; set; }
             public string? PageDesignHtml { get; set; } // Ajoutez ceci
 
