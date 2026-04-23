@@ -1,0 +1,38 @@
+# Dossiers de build
+**/bin/
+**/obj/
+**/out/
+**/publish/
+
+# Dossiers IDE / outils
+**/.vs/
+**/.vscode/
+**/.idea/
+
+# Contrôle de source / CI
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Fichiers utilisateur / OS
+**/*.user
+**/*.suo
+**/*.swp
+**/*.tmp
+**/.DS_Store
+**/Thumbs.db
+
+# Logs
+**/*.log
+
+# Secrets et configs locales
+**/appsettings.Development.json
+**/secrets.json
+**/.env
+**/.env.*
+
+# Docker / docs non nécessaires au build image
+docker-compose*
+README.md
+LICENSE

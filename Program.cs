@@ -8,6 +8,7 @@ using Microsoft.Identity.Web;
 using Microsoft.Extensions.Logging;
 using Xrmbox.VoC.Portal.Data;
 using Xrmbox.VoC.Portal.Models;
+using Microsoft.AspNetCore.HttpOverrides;
 using Xrmbox.VoC.Portal.Services;
 
 // 1. ON DÉCLARE LE BUILDER EN PREMIER
@@ -55,6 +56,10 @@ builder.Services.AddTransient<IEmailSender, EmailSender>();
 
 // 2. ON CONSTRUIT L'APPLICATION
 var app = builder.Build();
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
 
 // --- SEEDING : création/initialisation des rôles au démarrage ---
 using (var scope = app.Services.CreateScope())

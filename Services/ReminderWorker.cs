@@ -15,11 +15,13 @@ namespace Xrmbox.VoC.Portal.Services
     {
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<ReminderWorker> _logger;
+        private readonly IConfiguration _configuration;
 
-        public ReminderWorker(IServiceScopeFactory scopeFactory, ILogger<ReminderWorker> logger)
+        public ReminderWorker(IServiceScopeFactory scopeFactory, ILogger<ReminderWorker> logger, IConfiguration configuration)
         {
             _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _configuration = configuration;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -34,8 +36,9 @@ namespace Xrmbox.VoC.Portal.Services
                     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                     var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
                     var dataverseService = scope.ServiceProvider.GetService<DataverseService>();
-
+                    var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "https://localhost:7265";
                     var threshold = DateTime.Now;
+
 
                     var invites = await db.SurveyInvitations
                         .Where(i => !i.IsUsed && i.ReminderCount < 3)
@@ -85,7 +88,7 @@ namespace Xrmbox.VoC.Portal.Services
 
                         if (string.IsNullOrWhiteSpace(email)) continue;
 
-                        var link = $"https://localhost:7265/Survey/Fill?token={inv.Token}";
+                        var link = $"{baseUrl}/Survey/Fill?token={inv.Token}";
 
                         // 4. Préparation du contenu avec tous les remplacements
                         var subject = reminderTemplate.Subject

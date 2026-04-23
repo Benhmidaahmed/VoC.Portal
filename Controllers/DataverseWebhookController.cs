@@ -38,15 +38,16 @@ namespace Xrmbox.VoC.Portal.Controllers
 
         private readonly IEmailService _emailService;
 
+        private readonly IConfiguration _configuration;
 
-
-        public DataverseWebhookController(AppDbContext dbContext, IEmailService emailService)
+        public DataverseWebhookController(AppDbContext dbContext, IEmailService emailService, IConfiguration configuration)
 
         {
 
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
 
             _emailService = emailService ?? throw new ArgumentNullException(nameof(emailService));
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
 
         }
 
@@ -303,7 +304,7 @@ namespace Xrmbox.VoC.Portal.Controllers
                                 "CampaignEmail");
                         }
 
-                        var baseUrl = "https://hylotheistical-unepauletted-aide.ngrok-free.dev";
+                        var baseUrl = _configuration["AppSettings:BaseUrl"];
 
                         foreach (var p in evt.Participants)
                         {
