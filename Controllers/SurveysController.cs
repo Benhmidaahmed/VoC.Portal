@@ -152,11 +152,12 @@ namespace Xrmbox.VoC.Portal.Controllers
 
         [AllowAnonymous]
         [HttpGet]
+       
         public async Task<IActionResult> Fill(Guid token)
         {
             if (token == Guid.Empty) return View("SurveyError");
 
-            // 1. Trouver l'invitation
+            // 1. Trouver l'invitation en incluant la campagne si possible
             var invitation = await _dbContext.SurveyInvitations
                 .SingleOrDefaultAsync(i => i.Token == token);
 
@@ -165,34 +166,34 @@ namespace Xrmbox.VoC.Portal.Controllers
                 return View("SurveyError");
             }
 
-            // --- NOUVELLE LOGIQUE : Récupérer le brouillon s'il existe ---
+            // 2. Récupérer la campagne liée à l'invitation via la base LOCALE
+            var campagne = await _dbContext.Campaigns
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.DataverseId == invitation.CampaignDataverseId);
+
+            if (campagne == null)
+            {
+                // Si la campagne n'existe pas localement, on tente le fallback Dataverse
+                var surveyContext = _dataverseService.GetSurveyContextInfo(invitation.ParticipantDataverseId);
+                if (surveyContext != null)
+                {
+                    ViewBag.SurveyId = surveyContext.SurveyId.ToString();
+                    ViewBag.CampagneId = surveyContext.CampagneId;
+                }
+            }
+            else
+            {
+                // ? ON UTILISE LES DONNÉES SYNCHRONISÉES PAR LE WEBHOOK
+                ViewBag.PageDesignHtml = campagne.PageDesignHtml;
+                ViewBag.CampagneId = campagne.DataverseId;
+                ViewBag.SurveyId = campagne.SurveyDataverseId.ToString(); // C'est l'ID 937ecc2e...
+            }
+
+            // Logique de brouillon (inchangée)
             var existingResponse = await _dbContext.LocalResponses
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.Token == token);
-
-            // On stocke le JSON dans ViewBag pour le JavaScript
-            // Si pas de réponse, on envoie "null" ou un objet vide "{}"
             ViewBag.SavedData = existingResponse?.ResponseJson ?? "null";
-            // -----------------------------------------------------------
-
-            // 2. Récupérer les infos Dataverse
-            var surveyContext = _dataverseService.GetSurveyContextInfo(invitation.ParticipantDataverseId);
-
-            if (surveyContext != null)
-            {
-                Guid campagneId = (Guid)surveyContext.CampagneId;
-                if (campagneId != Guid.Empty)
-                {
-                    var campagne = await _dbContext.Campaigns
-                        .AsNoTracking()
-                        .FirstOrDefaultAsync(c => c.DataverseId == campagneId);
-
-                    ViewBag.PageDesignHtml = campagne?.PageDesignHtml;
-                    ViewBag.CampagneId = campagneId;
-                }
-
-                ViewBag.SurveyId = surveyContext.SurveyId.ToString() ?? string.Empty;
-            }
 
             ViewBag.ParticipantId = invitation.ParticipantDataverseId;
             ViewBag.Token = invitation.Token;

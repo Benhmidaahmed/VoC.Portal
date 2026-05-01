@@ -18,5 +18,7 @@ namespace Xrmbox.VoC.Portal.Models.Local
         // Nouveautés demandées
         public bool IsActive { get; set; } = true;
         public string? SyncStatus { get; set; }
+        public string? ParticipantEmail { get; set; }
+        public string? ParticipantName { get; set; }
     }
 }

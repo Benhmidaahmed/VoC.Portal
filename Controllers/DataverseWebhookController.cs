@@ -330,7 +330,9 @@ namespace Xrmbox.VoC.Portal.Controllers
                                 IsUsed = false,
                                 IsActive = true,  // ✅ ÉTAIT false — BUG CRITIQUE
                                 ReminderCount = 0,
-                                SyncStatus = "Pending"
+                                SyncStatus = "Pending",
+                                ParticipantEmail = p.Email,      // ✅ NOUVEAU
+                                ParticipantName = p.ClientName
                             };
 
                             _dbContext.SurveyInvitations.Add(invitation);

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -35,85 +36,114 @@ namespace Xrmbox.VoC.Portal.Services
                     using var scope = _scopeFactory.CreateScope();
                     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                     var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
-                    var dataverseService = scope.ServiceProvider.GetService<DataverseService>();
                     var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "https://localhost:7265";
-                    var threshold = DateTime.Now;
+                    var now = DateTime.UtcNow;
 
-
+                    // Récupérer uniquement les invitations non utilisées, actives, avec moins de 3 rappels
                     var invites = await db.SurveyInvitations
-                        .Where(i => !i.IsUsed && i.ReminderCount < 3)
+                        .Where(i => !i.IsUsed && i.IsActive && i.ReminderCount < 3)
                         .ToListAsync(stoppingToken);
+
+                    _logger.LogInformation("[ReminderWorker] {Count} invitation(s) candidate(s) au rappel.", invites.Count);
 
                     foreach (var inv in invites)
                     {
                         if (stoppingToken.IsCancellationRequested) break;
 
-                        bool hasStarted = inv.LastPartialSave.HasValue;
-                        bool hasStaleDraft = hasStarted && inv.LastPartialSave.Value <= threshold;
-                        bool reminderDelayPassed = inv.LastReminderSent.HasValue && inv.LastReminderSent.Value <= threshold;
+                        // ✅ 1. Email et nom lus directement depuis l'invitation (base locale)
+                        //       Plus aucun appel Dataverse — résout le bug "email introuvable"
+                        string? email = inv.ParticipantEmail;
+                        string clientName = inv.ParticipantName ?? "Client";
 
-                        // Condition : Brouillon abandonné OU délai de rappel classique passé
-                        var shouldSendReminder = hasStaleDraft || (inv.ReminderCount > 0 && reminderDelayPassed);
+                        if (string.IsNullOrWhiteSpace(email))
+                        {
+                            _logger.LogWarning("[SKIP] Invitation {Id} : ParticipantEmail vide en base locale.", inv.Id);
+                            continue;
+                        }
 
-                        if (!shouldSendReminder) continue;
-
+                        // 2. Récupérer la campagne et son template de rappel (Role = 1)
                         var campaign = await db.Campaigns
                             .Include(c => c.Emails)
                             .AsNoTracking()
-                            .FirstOrDefaultAsync(c => c.DataverseId == inv.CampaignDataverseId);
+                            .FirstOrDefaultAsync(c => c.DataverseId == inv.CampaignDataverseId, stoppingToken);
 
                         var reminderTemplate = campaign?.Emails.FirstOrDefault(e => e.Role == 1);
 
                         if (reminderTemplate == null)
                         {
-                            _logger.LogWarning("[SKIP] Aucun template de rappel (Role=1) pour la campagne {Id}", inv.CampaignDataverseId);
+                            _logger.LogWarning("[SKIP] Aucun template rappel (Role=1) pour campagne {Id}", inv.CampaignDataverseId);
                             continue;
                         }
 
-                        string? email = null;
-                        string clientName = "Client";
-                        string campaignName = campaign?.Name ?? "notre enquête";
+                        // ✅ 3. Threshold calculé depuis DelayDays du template (en minutes)
+                        //       Si DelayDays est null → défaut 1440 min (24h)
+                        int delayMinutes = reminderTemplate.DelayDays ?? 1440;
+                        var threshold = now.AddMinutes(-delayMinutes);
 
-                        var ctx = dataverseService?.GetSurveyContextInfo(inv.ParticipantDataverseId);
-                        if (ctx != null)
+                        _logger.LogDebug("[DEBUG] Invitation {Id} | DelayMinutes={D} | Threshold={T} | LastPartialSave={Lps} | LastReminderSent={Lrs} | ReminderCount={Rc}",
+                            inv.Id, delayMinutes, threshold, inv.LastPartialSave, inv.LastReminderSent, inv.ReminderCount);
+
+                        // ✅ 4. Condition de déclenchement corrigée
+                        //    - 1er rappel  : brouillon abandonné (LastPartialSave existe et délai dépassé)
+                        //    - Rappels suivants : délai depuis le dernier rappel dépassé
+                        bool hasStarted = inv.LastPartialSave.HasValue;
+                        bool hasStaleDraft = hasStarted
+                            && inv.LastPartialSave!.Value.ToUniversalTime() <= threshold;
+
+                        bool reminderDelayPassed = inv.LastReminderSent.HasValue
+                            && inv.LastReminderSent.Value.ToUniversalTime() <= threshold;
+
+                        bool shouldSendReminder = hasStaleDraft
+                            || (inv.ReminderCount > 0 && reminderDelayPassed);
+
+                        if (!shouldSendReminder)
                         {
-                            var participants = dataverseService.GetParticipantsByCampaign((Guid)ctx.CampagneId);
-                            var participant = participants?.FirstOrDefault(p => p.Id == inv.ParticipantDataverseId);
-
-                            email = participant?.Email;
-                            // Utilise ClientName du DTO s'il existe, sinon garde "Client"
-                            if (!string.IsNullOrEmpty(participant?.ClientName))
-                                clientName = participant.ClientName;
+                            _logger.LogDebug("[SKIP] Invitation {Id} : délai non encore atteint.", inv.Id);
+                            continue;
                         }
 
-                        if (string.IsNullOrWhiteSpace(email)) continue;
-
+                        // 5. Préparation du contenu de l'email
+                        string campaignName = campaign?.Name ?? "notre enquête";
                         var link = $"{baseUrl}/Survey/Fill?token={inv.Token}";
 
-                        // 4. Préparation du contenu avec tous les remplacements
-                        var subject = reminderTemplate.Subject
+                        var subject = (reminderTemplate.Subject ?? "")
                             .Replace("[SurveyLink]", link)
                             .Replace("[CampaignName]", campaignName)
-                            .Replace("[ClientName]", clientName);
-
-                        var body = reminderTemplate.Body
-                            .Replace("[SurveyLink]", link)
-                            .Replace("[CampaignName]", campaignName)
+                            .Replace("[CampagneName]", campaignName)
                             .Replace("[ClientName]", clientName)
+                            .Replace("{{SurveyLink}}", link)
+                            .Replace("{{CampaignName}}", campaignName)
+                            .Replace("{{CampagneName}}", campaignName)
+                            .Replace("{{ClientName}}", clientName);
+
+                        var body = (reminderTemplate.Body ?? "")
+                            .Replace("[SurveyLink]", link)
+                            .Replace("[CampaignName]", campaignName)
+                            .Replace("[CampagneName]", campaignName)
+                            .Replace("[ClientName]", clientName)
+                            .Replace("{{SurveyLink}}", link)
+                            .Replace("{{CampaignName}}", campaignName)
+                            .Replace("{{CampagneName}}", campaignName)
+                            .Replace("{{ClientName}}", clientName)
                             .Replace("[br]", "<br/>")
                             .Replace("\n", "<br/>");
 
+                        // 6. Envoi de l'email
                         try
                         {
-                            _logger.LogInformation("[RAPPEL] Envoi du mail Role=1 à {Email} (Client: {Name})", email, clientName);
+                            _logger.LogInformation("[RAPPEL] Envoi à {Email} (Client: {Name}, Invitation: {Id}, Rappel #{N})",
+                                email, clientName, inv.Id, inv.ReminderCount + 1);
+
                             await emailService.SendEmailAsync(email, subject, body);
 
                             inv.ReminderCount += 1;
-                            inv.LastReminderSent = DateTime.Now;
+                            inv.LastReminderSent = DateTime.UtcNow;
                             inv.SyncStatus = "Reminded";
 
                             db.SurveyInvitations.Update(inv);
                             await db.SaveChangesAsync(stoppingToken);
+
+                            _logger.LogInformation("[OK] Rappel #{N} envoyé pour invitation {Id}", inv.ReminderCount, inv.Id);
                         }
                         catch (Exception ex)
                         {

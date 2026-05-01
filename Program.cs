@@ -53,7 +53,14 @@ builder.Services.AddHostedService<ReminderWorker>();
 
 // Enregistrement du service EmailSender (IEmailSender) pour l'Identity UI
 builder.Services.AddTransient<IEmailSender, EmailSender>();
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    // C'est cette ligne qui fait la différence entre local et serveur :
+    options.Cookie.SecurePolicy = CookieSecurePolicy.None;
 
+    options.LoginPath = "/Identity/Account/Login";
+    options.AccessDeniedPath = "/Identity/Account/AccessDenied";
+});
 // 2. ON CONSTRUIT L'APPLICATION
 var app = builder.Build();
 app.UseForwardedHeaders(new ForwardedHeadersOptions
